@@ -1,0 +1,27 @@
+main:
+  size: 54
+  filler:
+    enabled: true
+    material: BLACK_STAINED_GLASS_PANE
+    name: ' '
+  collection-lore:
+    - '&7Progress: &f%progress%&7/&f%next_goal%'
+    - '&7Unlocked tiers: &f%tier%'
+    - ''
+    - '&eClick to view rewards.'
+detail:
+  size: 54
+  filler:
+    enabled: true
+    material: BLACK_STAINED_GLASS_PANE
+    name: ' '
+  tier-lore:
+    locked:
+      - '&7Goal: &f%goal%'
+      - '&7Progress: &f%progress%&7/&f%goal%'
+      - ''
+      - '&cLocked'
+    unlocked:
+      - '&7Goal: &f%goal%'
+      - ''
+      - '&aUnlocked'

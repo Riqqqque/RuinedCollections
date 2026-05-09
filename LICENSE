@@ -1,0 +1,55 @@
+RuinedCollections Free Use License v1.0
+
+Copyright (c) 2026 Rique
+
+Permission is granted, free of charge, to use, copy, download, install,
+modify, and run RuinedCollections for personal use, private servers, public
+servers, and monetized Minecraft servers, subject to the terms below.
+
+You may:
+
+1. Use RuinedCollections on any Minecraft server, including servers that accept
+   donations, sell ranks, sell cosmetics, or otherwise monetize the server.
+2. Modify RuinedCollections for your own use or for use on servers you own,
+   manage, develop for, or have permission to maintain.
+3. Share RuinedCollections source code or compiled jar files for free.
+4. Fork this project publicly or privately as long as this license stays with
+   the project and the fork is not sold.
+5. Include RuinedCollections in free server setups, free plugin packs, or free
+   educational material.
+
+You may not:
+
+1. Sell, rent, lease, sublicense, or otherwise charge money for copies of the
+   RuinedCollections source code, compiled jar files, modified builds, forks,
+   or direct downloads.
+2. Put RuinedCollections, modified builds, forks, or direct downloads behind a
+   paywall, paid marketplace listing, paid subscription, paid bundle, or paid
+   access gate.
+3. Claim that you wrote the original RuinedCollections project.
+4. Remove this license or the copyright notice from source distributions,
+   modified builds, forks, or jar distributions.
+5. Use the RuinedCollections name, branding, or author name to imply official
+   endorsement of an unofficial build, fork, service, or paid product.
+
+Server Monetization Exception:
+
+Running RuinedCollections on a monetized Minecraft server is allowed. This
+license only blocks selling the plugin itself, its source code, its jar file,
+modified builds, forks, or direct access to download it. Server owners may
+monetize their servers while using this plugin, as long as they are not selling
+RuinedCollections itself and they follow all applicable Minecraft, Mojang,
+Microsoft, and platform rules.
+
+Contributions:
+
+By submitting code, configuration, documentation, translations, or other
+contributions to this project, you agree that your contribution may be included
+under this license.
+
+No Warranty:
+
+RuinedCollections is provided "as is", without warranty of any kind. The author
+is not liable for any claim, damage, data loss, downtime, lost revenue, or other
+issue arising from use, modification, distribution, or inability to use the
+software.
