@@ -1,0 +1,29 @@
+id: obsidian
+enabled: true
+display-name: '&5Obsidian'
+description:
+  - '&7Mine obsidian to unlock stronger rewards.'
+display-item:
+  material: OBSIDIAN
+menu-slot: 11
+sources:
+  - type: BLOCK_BREAK
+    materials:
+      - OBSIDIAN
+tiers:
+  - id: I
+    goal: 25
+    rewards:
+      - type: MESSAGE
+        text: '&dYou reached Obsidian I.'
+  - id: II
+    goal: 100
+    rewards:
+      - type: COMMAND
+        sender: CONSOLE
+        command: 'give %player% obsidian 8'
+  - id: III
+    goal: 1000
+    rewards:
+      - type: BROADCAST
+        text: '&d%player% reached Obsidian III.'

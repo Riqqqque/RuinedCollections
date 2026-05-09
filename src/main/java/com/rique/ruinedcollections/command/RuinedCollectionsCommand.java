@@ -1,0 +1,443 @@
+package com.rique.ruinedcollections.command;
+
+import com.rique.ruinedcollections.RuinedCollectionsPlugin;
+import com.rique.ruinedcollections.collection.CollectionDefinition;
+import com.rique.ruinedcollections.collection.CollectionSourceType;
+import com.rique.ruinedcollections.storage.ImportPreview;
+import com.rique.ruinedcollections.util.Longs;
+import com.rique.ruinedcollections.util.Text;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+public final class RuinedCollectionsCommand implements CommandExecutor, TabCompleter {
+    private final RuinedCollectionsPlugin plugin;
+
+    public RuinedCollectionsCommand(RuinedCollectionsPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    @Override
+    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        if (args.length == 0 || "help".equalsIgnoreCase(args[0])) {
+            help(sender);
+            return true;
+        }
+        String sub = args[0].toLowerCase(Locale.ROOT);
+        try {
+            switch (sub) {
+                case "reload" -> reload(sender);
+                case "validate" -> validate(sender);
+                case "list" -> list(sender);
+                case "info" -> info(sender, args);
+                case "open" -> open(sender, args);
+                case "add" -> add(sender, args);
+                case "set" -> set(sender, args);
+                case "reset" -> reset(sender, args);
+                case "create" -> create(sender, args);
+                case "delete" -> delete(sender, args);
+                case "tier" -> tier(sender, args);
+                case "source" -> source(sender, args);
+                case "reward" -> reward(sender, args);
+                case "export" -> export(sender, args);
+                case "import" -> importData(sender, args);
+                default -> help(sender);
+            }
+        } catch (NoPermission ignored) {
+            return true;
+        } catch (IOException exception) {
+            sender.sendMessage(color("&cFile change failed: " + exception.getMessage()));
+        }
+        return true;
+    }
+
+    private void help(CommandSender sender) {
+        sender.sendMessage(color("&6RuinedCollections commands:"));
+        sender.sendMessage(color("&e/rc reload &7- reload configs"));
+        sender.sendMessage(color("&e/rc validate &7- check collection files"));
+        sender.sendMessage(color("&e/rc list &7- list collections"));
+        sender.sendMessage(color("&e/rc info <collection> &7- show collection info"));
+        sender.sendMessage(color("&e/rc open [player] &7- open the menu"));
+        sender.sendMessage(color("&e/rc add <player> <collection> <amount> &7- add progress"));
+        sender.sendMessage(color("&e/rc set <player> <collection> <amount> &7- set progress"));
+        sender.sendMessage(color("&e/rc reset <player> <collection> &7- set progress to 0"));
+        sender.sendMessage(color("&e/rc create <id> <material> [display] &7- create a collection file"));
+        sender.sendMessage(color("&e/rc delete <id> &7- move a collection file to collections/deleted"));
+        sender.sendMessage(color("&e/rc tier add <collection> <tier> <goal> &7- add a tier"));
+        sender.sendMessage(color("&e/rc source add <collection> <type> <key> &7- add a source"));
+        sender.sendMessage(color("&e/rc reward add-command <collection> <tier> <console|player> <command> &7- add command reward"));
+        sender.sendMessage(color("&e/rc export <file> &7- export data"));
+        sender.sendMessage(color("&e/rc import <file> [--apply] &7- preview or apply data"));
+    }
+
+    private void reload(CommandSender sender) {
+        require(sender, "ruinedcollections.admin.reload");
+        plugin.reloadAll();
+        sender.sendMessage(color(plugin.getConfig().getString("messages.reloaded", "&aReloaded %collections% collections.")
+                .replace("%collections%", String.valueOf(plugin.collectionRegistry().all().size()))));
+    }
+
+    private void validate(CommandSender sender) {
+        require(sender, "ruinedcollections.admin.reload");
+        List<String> issues = plugin.collectionRegistry().load();
+        plugin.menuService().load();
+        if (issues.isEmpty()) {
+            sender.sendMessage(color("&aNo collection issues found."));
+            return;
+        }
+        sender.sendMessage(color("&cFound " + issues.size() + " issue(s):"));
+        for (String issue : issues.stream().limit(10).toList()) {
+            sender.sendMessage(color("&7- &f" + issue));
+        }
+        if (issues.size() > 10) {
+            sender.sendMessage(color("&7...and " + (issues.size() - 10) + " more."));
+        }
+    }
+
+    private void list(CommandSender sender) {
+        require(sender, "ruinedcollections.view");
+        sender.sendMessage(color("&6Collections:"));
+        for (CollectionDefinition collection : plugin.collectionRegistry().all()) {
+            sender.sendMessage(color("&7- &f" + collection.id() + " &8(" + collection.tiers().size() + " tiers, " + (collection.enabled() ? "enabled" : "disabled") + ")"));
+        }
+    }
+
+    private void info(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.view");
+        if (args.length < 2) {
+            sender.sendMessage(color("&cUsage: /rc info <collection>"));
+            return;
+        }
+        Optional<CollectionDefinition> collection = plugin.collectionRegistry().get(args[1]);
+        if (collection.isEmpty()) {
+            sender.sendMessage(color(plugin.getConfig().getString("messages.invalid-collection").replace("%collection%", args[1])));
+            return;
+        }
+        CollectionDefinition value = collection.get();
+        sender.sendMessage(color("&6" + value.id() + " &7- " + value.displayName()));
+        sender.sendMessage(color("&7Sources: &f" + value.sources().size()));
+        for (var tier : value.tiers()) {
+            sender.sendMessage(color("&7Tier &f" + tier.id() + "&7: &f" + Longs.format(tier.goal()) + " &7goal, &f" + tier.rewards().size() + " &7rewards"));
+        }
+    }
+
+    private void open(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.admin");
+        Player target;
+        if (args.length >= 2) {
+            target = Bukkit.getPlayerExact(args[1]);
+            if (target == null) {
+                sender.sendMessage(color("&cThat player is not online."));
+                return;
+            }
+        } else if (sender instanceof Player player) {
+            target = player;
+        } else {
+            sender.sendMessage(color("&cUsage: /rc open <player>"));
+            return;
+        }
+        plugin.menuService().openMain(target, 0);
+    }
+
+    private void add(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 4) {
+            sender.sendMessage(color("&cUsage: /rc add <player> <collection> <amount>"));
+            return;
+        }
+        Optional<CollectionDefinition> collection = plugin.collectionRegistry().get(args[2]);
+        Long amount = Longs.parsePositive(args[3]);
+        if (collection.isEmpty() || amount == null) {
+            sender.sendMessage(color("&cInvalid collection or amount."));
+            return;
+        }
+        OfflinePlayer player = resolvePlayer(args[1]);
+        if (player == null) {
+            sender.sendMessage(color("&cPlayer not found. Use an online player, cached player, or UUID."));
+            return;
+        }
+        plugin.progressService().addManual(player.getUniqueId(), collection.get().id(), amount);
+        sender.sendMessage(color(plugin.getConfig().getString("messages.progress-added")
+                .replace("%amount%", Longs.format(amount))
+                .replace("%player%", args[1])
+                .replace("%collection%", collection.get().id())));
+    }
+
+    private void set(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 4) {
+            sender.sendMessage(color("&cUsage: /rc set <player> <collection> <amount>"));
+            return;
+        }
+        Optional<CollectionDefinition> collection = plugin.collectionRegistry().get(args[2]);
+        Long amount = parseZeroOrPositive(args[3]);
+        if (collection.isEmpty() || amount == null) {
+            sender.sendMessage(color("&cInvalid collection or amount."));
+            return;
+        }
+        OfflinePlayer player = resolvePlayer(args[1]);
+        if (player == null) {
+            sender.sendMessage(color("&cPlayer not found. Use an online player, cached player, or UUID."));
+            return;
+        }
+        plugin.progressService().setProgress(player.getUniqueId(), collection.get().id(), amount);
+        sender.sendMessage(color(plugin.getConfig().getString("messages.progress-set")
+                .replace("%amount%", Longs.format(amount))
+                .replace("%player%", args[1])
+                .replace("%collection%", collection.get().id())));
+    }
+
+    private void reset(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 3) {
+            sender.sendMessage(color("&cUsage: /rc reset <player> <collection>"));
+            return;
+        }
+        Optional<CollectionDefinition> collection = plugin.collectionRegistry().get(args[2]);
+        if (collection.isEmpty()) {
+            sender.sendMessage(color("&cInvalid collection."));
+            return;
+        }
+        OfflinePlayer player = resolvePlayer(args[1]);
+        if (player == null) {
+            sender.sendMessage(color("&cPlayer not found. Use an online player, cached player, or UUID."));
+            return;
+        }
+        plugin.progressService().setProgress(player.getUniqueId(), collection.get().id(), 0);
+        sender.sendMessage(color(plugin.getConfig().getString("messages.progress-reset")
+                .replace("%player%", args[1])
+                .replace("%collection%", collection.get().id())));
+    }
+
+    private void create(CommandSender sender, String[] args) throws IOException {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 3) {
+            sender.sendMessage(color("&cUsage: /rc create <id> <material> [display name]"));
+            return;
+        }
+        Material material = Material.matchMaterial(args[2]);
+        if (material == null || material.isAir()) {
+            sender.sendMessage(color("&cInvalid material."));
+            return;
+        }
+        String displayName = args.length >= 4 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : args[1];
+        if (!plugin.collectionRegistry().createCollection(args[1], material, displayName)) {
+            sender.sendMessage(color("&cCould not create that collection. Check the id or duplicates."));
+            return;
+        }
+        plugin.reloadAll();
+        sender.sendMessage(color("&aCreated collection &f" + args[1] + "&a."));
+    }
+
+    private void delete(CommandSender sender, String[] args) throws IOException {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 2) {
+            sender.sendMessage(color("&cUsage: /rc delete <id>"));
+            return;
+        }
+        if (!plugin.collectionRegistry().deleteCollection(args[1])) {
+            sender.sendMessage(color("&cUnknown collection."));
+            return;
+        }
+        plugin.reloadAll();
+        sender.sendMessage(color("&aMoved collection &f" + args[1] + " &ato the deleted folder."));
+    }
+
+    private void tier(CommandSender sender, String[] args) throws IOException {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 5 || !"add".equalsIgnoreCase(args[1])) {
+            sender.sendMessage(color("&cUsage: /rc tier add <collection> <tier> <goal>"));
+            return;
+        }
+        Long goal = Longs.parsePositive(args[4]);
+        if (goal == null || !plugin.collectionRegistry().addTier(args[2], args[3], goal)) {
+            sender.sendMessage(color("&cCould not add that tier."));
+            return;
+        }
+        plugin.reloadAll();
+        sender.sendMessage(color("&aAdded tier &f" + args[3] + "&a."));
+    }
+
+    private void source(CommandSender sender, String[] args) throws IOException {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 4 || !"add".equalsIgnoreCase(args[1])) {
+            sender.sendMessage(color("&cUsage: /rc source add <collection> <type> [key]"));
+            return;
+        }
+        CollectionSourceType type;
+        try {
+            type = CollectionSourceType.valueOf(args[3].toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            sender.sendMessage(color("&cInvalid source type."));
+            return;
+        }
+        if (type != CollectionSourceType.MANUAL && args.length < 5) {
+            sender.sendMessage(color("&cThat source type needs a material or entity key."));
+            return;
+        }
+        String key = args.length >= 5 ? args[4] : "";
+        if (!plugin.collectionRegistry().addSource(args[2], type, key)) {
+            sender.sendMessage(color("&cCould not add that source."));
+            return;
+        }
+        plugin.reloadAll();
+        sender.sendMessage(color("&aAdded source to &f" + args[2] + "&a."));
+    }
+
+    private void reward(CommandSender sender, String[] args) throws IOException {
+        require(sender, "ruinedcollections.admin.modify");
+        if (args.length < 6 || !"add-command".equalsIgnoreCase(args[1])) {
+            sender.sendMessage(color("&cUsage: /rc reward add-command <collection> <tier> <console|player> <command>"));
+            return;
+        }
+        String command = String.join(" ", Arrays.copyOfRange(args, 5, args.length));
+        if (!plugin.collectionRegistry().addCommandReward(args[2], args[3], args[4], command)) {
+            sender.sendMessage(color("&cCould not add that reward."));
+            return;
+        }
+        plugin.reloadAll();
+        sender.sendMessage(color("&aAdded command reward to &f" + args[2] + " " + args[3] + "&a."));
+    }
+
+    private void export(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.admin.export");
+        if (args.length < 2) {
+            sender.sendMessage(color("&cUsage: /rc export <file>"));
+            return;
+        }
+        plugin.progressService().flushSync();
+        File file = dataFile(args[1]);
+        plugin.snapshots().exportData(file).whenComplete((result, throwable) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (throwable != null) {
+                        sender.sendMessage(color("&cExport failed: " + throwable.getMessage()));
+                        return;
+                    }
+                    sender.sendMessage(color("&aExported data to &f" + result.getName() + "&a."));
+                }));
+    }
+
+    private void importData(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.admin.import");
+        if (args.length < 2) {
+            sender.sendMessage(color("&cUsage: /rc import <file> [--apply]"));
+            return;
+        }
+        File file = dataFile(args[1]);
+        if (!file.exists()) {
+            sender.sendMessage(color("&cThat file does not exist."));
+            return;
+        }
+        ImportPreview preview = plugin.snapshots().preview(file);
+        boolean apply = args.length >= 3 && "--apply".equalsIgnoreCase(args[2]);
+        if (!apply) {
+            sender.sendMessage(color("&eImport preview: &f" + preview.progressRows().size() + " &eprogress rows, &f"
+                    + preview.claimedRows().size() + " &eclaimed tiers. Run with --apply to import."));
+            return;
+        }
+        plugin.snapshots().apply(preview).whenComplete((ignored, throwable) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (throwable != null) {
+                        sender.sendMessage(color("&cImport failed: " + throwable.getMessage()));
+                        return;
+                    }
+                    preview.progressRows().stream()
+                            .map(row -> Bukkit.getPlayer(row.playerId()))
+                            .filter(player -> player != null && player.isOnline())
+                            .distinct()
+                            .forEach(player -> plugin.progressService().refresh(player));
+                    sender.sendMessage(color("&aImported data."));
+                }));
+    }
+
+    private void require(CommandSender sender, String permission) {
+        if (!sender.hasPermission(permission) && !sender.hasPermission("ruinedcollections.admin")) {
+            throw new NoPermission(sender);
+        }
+    }
+
+    private File dataFile(String name) {
+        File exports = new File(plugin.getDataFolder(), "exports");
+        return new File(exports, name.endsWith(".yml") ? name : name + ".yml");
+    }
+
+    private Long parseZeroOrPositive(String input) {
+        try {
+            long value = Long.parseLong(input);
+            return value >= 0 ? value : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private OfflinePlayer resolvePlayer(String input) {
+        Player online = Bukkit.getPlayerExact(input);
+        if (online != null) {
+            return online;
+        }
+        try {
+            return Bukkit.getOfflinePlayer(UUID.fromString(input));
+        } catch (IllegalArgumentException ignored) {
+            return Bukkit.getOfflinePlayerIfCached(input);
+        }
+    }
+
+    private String color(String text) {
+        return Text.color(plugin.messagePrefix() + text);
+    }
+
+    @Override
+    public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
+        if (args.length == 1) {
+            return filter(args[0], List.of("help", "reload", "validate", "list", "info", "open", "add", "set", "reset", "create", "delete", "tier", "source", "reward", "export", "import"));
+        }
+        if (args.length == 2 && List.of("info", "delete").contains(args[0].toLowerCase(Locale.ROOT))) {
+            return filter(args[1], collectionIds());
+        }
+        if (args.length == 3 && List.of("add", "set", "reset").contains(args[0].toLowerCase(Locale.ROOT))) {
+            return filter(args[2], collectionIds());
+        }
+        if (args.length == 4 && "source".equalsIgnoreCase(args[0])) {
+            return filter(args[3], Arrays.stream(CollectionSourceType.values()).map(Enum::name).toList());
+        }
+        return List.of();
+    }
+
+    private List<String> collectionIds() {
+        return plugin.collectionRegistry().all().stream().map(CollectionDefinition::id).toList();
+    }
+
+    private List<String> filter(String prefix, List<String> options) {
+        String lower = prefix.toLowerCase(Locale.ROOT);
+        List<String> result = new ArrayList<>();
+        for (String option : options) {
+            if (option.toLowerCase(Locale.ROOT).startsWith(lower)) {
+                result.add(option);
+            }
+        }
+        return result;
+    }
+
+    private static final class NoPermission extends RuntimeException {
+        private NoPermission(CommandSender sender) {
+            sender.sendMessage(Text.color("&cYou do not have permission."));
+        }
+    }
+}

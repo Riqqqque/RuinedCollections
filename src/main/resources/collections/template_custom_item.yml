@@ -1,0 +1,36 @@
+# Copy this file and change the id to make a custom collection.
+# For custom items from other plugins, use the material plus custom-model-data
+# or persistent-data if that plugin stores a public key on the item.
+# For custom blocks, there is no universal Paper API identifier. Use MANUAL
+# progress through /rc add, command rewards, or the plugin API.
+id: custom_gem
+enabled: false
+display-name: '&bCustom Gem'
+description:
+  - '&7Template for custom item collections.'
+display-item:
+  material: DIAMOND
+  custom-model-data: 1001
+menu-slot: 12
+sources:
+  - type: ITEM_PICKUP
+    materials:
+      - DIAMOND
+    item-match:
+      custom-model-data: 1001
+  - type: MANUAL
+tiers:
+  - id: I
+    goal: 50
+    rewards:
+      - type: COMMAND
+        sender: CONSOLE
+        command: 'customitems give %player% custom_gem_reward 1'
+      - type: MESSAGE
+        text: '&bYou reached Custom Gem I.'
+  - id: II
+    goal: 1000000000
+    rewards:
+      - type: COMMAND
+        sender: CONSOLE
+        command: 'lp user %player% permission set ruinedcollections.custom_gem true'

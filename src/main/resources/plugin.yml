@@ -1,0 +1,41 @@
+name: RuinedCollections
+main: com.rique.ruinedcollections.RuinedCollectionsPlugin
+version: ${project.version}
+api-version: '1.21'
+author: Rique
+description: Highly configurable player collections for Paper servers.
+softdepend:
+  - PlaceholderAPI
+  - Vault
+  - LuckPerms
+commands:
+  ruinedcollections:
+    description: Main admin command for RuinedCollections.
+    usage: /<command> help
+    aliases:
+      - rc
+  collections:
+    description: Open your collections menu.
+    usage: /<command>
+permissions:
+  ruinedcollections.admin:
+    description: Full access to RuinedCollections admin commands.
+    default: op
+  ruinedcollections.admin.reload:
+    description: Reload configs and collections.
+    default: op
+  ruinedcollections.admin.modify:
+    description: Change collection files and player progress.
+    default: op
+  ruinedcollections.admin.export:
+    description: Export collection data.
+    default: op
+  ruinedcollections.admin.import:
+    description: Import collection data.
+    default: op
+  ruinedcollections.menu:
+    description: Open the collections menu.
+    default: true
+  ruinedcollections.view:
+    description: View collection progress.
+    default: true

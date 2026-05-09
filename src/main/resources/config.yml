@@ -1,0 +1,45 @@
+storage:
+  # sqlite is best for small servers. mysql is better for large servers and networks.
+  type: sqlite
+  table-prefix: rc_
+  sqlite:
+    file: data.db
+  mysql:
+    host: localhost
+    port: 3306
+    database: minecraft
+    username: root
+    password: ''
+    use-ssl: false
+    pool-size: 10
+
+progress:
+  flush-interval-seconds: 15
+  load-on-join: true
+  save-on-quit: true
+
+tracking:
+  ignore-creative: true
+  ignore-spectator: true
+  ignore-player-placed-blocks: true
+  disabled-worlds: []
+  enabled-worlds: []
+
+menus:
+  main-title: '&8Collections'
+  detail-title: '&8%collection%'
+  previous-item: ARROW
+  next-item: ARROW
+  back-item: BARRIER
+
+messages:
+  prefix: '&8[&6RuinedCollections&8]&r '
+  no-permission: '&cYou do not have permission.'
+  player-only: '&cOnly players can use that.'
+  reloaded: '&aReloaded %collections% collections.'
+  invalid-collection: '&cUnknown collection: &f%collection%'
+  invalid-number: '&cThat amount is not valid.'
+  progress-added: '&aAdded &f%amount% &ato &f%player%&a in &f%collection%&a.'
+  progress-set: '&aSet &f%player%&a to &f%amount%&a in &f%collection%&a.'
+  progress-reset: '&aReset &f%player%&a in &f%collection%&a.'
+  tier-unlocked: '&aCollection unlocked: &f%collection% %tier%&a!'

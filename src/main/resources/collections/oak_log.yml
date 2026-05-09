@@ -1,0 +1,34 @@
+id: oak_log
+enabled: true
+display-name: '&6Oak Log'
+description:
+  - '&7Collect oak logs by chopping trees.'
+display-item:
+  material: OAK_LOG
+menu-slot: 10
+sources:
+  - type: BLOCK_BREAK
+    materials:
+      - OAK_LOG
+tiers:
+  - id: I
+    goal: 50
+    rewards:
+      - type: MESSAGE
+        text: '&aYou reached Oak Log I.'
+      - type: COMMAND
+        sender: CONSOLE
+        command: 'give %player% oak_log 16'
+  - id: II
+    goal: 100
+    rewards:
+      - type: MESSAGE
+        text: '&aYou reached Oak Log II.'
+      - type: ECONOMY
+        amount: 250.0
+  - id: III
+    goal: 500
+    rewards:
+      - type: COMMAND
+        sender: CONSOLE
+        command: 'eco give %player% 1000'
