@@ -13,6 +13,18 @@ Player menu command:
 /collections
 ```
 
+## Tab Completion
+
+`/rc` has command-aware tab completion. It suggests subcommands, collections, online players, materials, source types, entity types, tier ids, common goals, export files, and common reward command shapes.
+
+Examples:
+
+```text
+/rc create <tab> <tab>
+/rc source add <collection> <tab>
+/rc reward add-command <collection> <tab>
+```
+
 ## Player Commands
 
 ```text
