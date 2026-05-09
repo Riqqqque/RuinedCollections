@@ -1,42 +1,101 @@
 # RuinedCollections
 
+[![Release](https://img.shields.io/github/v/release/Riqqqque/RuinedCollections?label=release)](https://github.com/Riqqqque/RuinedCollections/releases/latest)
+[![Paper](https://img.shields.io/badge/Paper-1.21%2B-2f3136)](https://papermc.io/)
+[![Java](https://img.shields.io/badge/Java-21%2B-b07219)](https://adoptium.net/)
+[![License](https://img.shields.io/badge/license-free%20use%2C%20no%20resale-blue)](LICENSE)
+
 RuinedCollections is a Paper collections plugin built for servers that want Hypixel SkyBlock-style progression without locking admins into one fixed system.
 
 Admins can create collections, set goals from small numbers to billions, track different gameplay actions, run commands, give economy rewards, build menus, use placeholders, and export or import player progress.
 
-## Status
+## Why Use It
 
-First public build. The plugin compiles and has been boot-tested on Paper `1.21`.
+| Need | Built In |
+| --- | --- |
+| Server-specific collections | YAML collection files and admin edit commands |
+| Huge goals | `long` progress values and SQL `BIGINT` storage |
+| Rewards | Command, message, broadcast, and Vault economy rewards |
+| Custom items | Material, custom model data, display name, and PDC matching |
+| Custom blocks | Manual progress and external command workflows |
+| Big-server storage | SQLite by default, MySQL/MariaDB for production networks |
+| Admin safety | Validation, duplicate reward protection, import preview, exports |
+| Menus and scoreboards | Configurable menus and PlaceholderAPI placeholders |
+
+## Download
+
+Latest jar:
+
+[Download RuinedCollections](https://github.com/Riqqqque/RuinedCollections/releases/latest)
 
 ## Requirements
 
 - Paper `1.21+`
 - Java `21+`
-- Optional: PlaceholderAPI
-- Optional: Vault plus an economy plugin
-- Optional: LuckPerms, usually through command rewards
+- PlaceholderAPI optional
+- Vault plus an economy plugin optional
+- LuckPerms optional through command rewards
 
-The plugin is compiled against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` so it can stay compatible across early 1.21 builds without newer API calls.
+RuinedCollections compiles against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` so it avoids depending on newer 1.21.x-only APIs.
 
-## Features
+## Quick Start
 
-- YAML-based collections
-- Default Oak Log and Obsidian collections
-- Custom item template
-- Manual progress support for custom blocks or external plugins
-- Long-based progress values for billion-scale goals
-- Block break, entity kill, item pickup, craft, fish, and manual sources
-- Player-placed block protection
-- SQLite storage by default
-- MySQL/MariaDB storage for larger servers
-- Schema version table for future migrations
-- Batched async progress writes
-- Duplicate reward protection
-- Command, message, broadcast, and economy rewards
-- PlaceholderAPI expansion
-- Configurable menus
-- Admin commands for creating and editing collections
-- Export/import with preview mode
+1. Put the jar in `plugins`.
+2. Start the server.
+3. Open `plugins/RuinedCollections/collections`.
+4. Copy or edit a template.
+5. Run `/rc validate`.
+6. Run `/rc reload`.
+7. Open `/collections`.
+
+Create a simple Oak Log collection:
+
+```text
+/rc create oak_log OAK_LOG &6Oak Log
+/rc tier add oak_log IV 1000
+/rc reward add-command oak_log IV console give %player% oak_log 64
+```
+
+Export player data:
+
+```text
+/rc export before-reset.yml
+```
+
+Preview an import:
+
+```text
+/rc import before-reset.yml
+```
+
+Apply an import:
+
+```text
+/rc import before-reset.yml --apply
+```
+
+## Documentation
+
+The full guide is available in the GitHub Wiki:
+
+[RuinedCollections Wiki](https://github.com/Riqqqque/RuinedCollections/wiki)
+
+Local docs are also kept in this repository:
+
+- [Installation](docs/INSTALLATION.md)
+- [Configuration](docs/CONFIGURATION.md)
+- [Collections](docs/COLLECTIONS.md)
+- [Collection Examples](docs/EXAMPLES.md)
+- [Commands](docs/COMMANDS.md)
+- [Rewards](docs/REWARDS.md)
+- [Menus](docs/MENUS.md)
+- [Placeholders](docs/PLACEHOLDERS.md)
+- [Storage, Import, Export, and Migrations](docs/STORAGE_AND_MIGRATIONS.md)
+- [Custom Items and Custom Blocks](docs/CUSTOM_ITEMS_AND_BLOCKS.md)
+- [Admin Playbook](docs/ADMIN_PLAYBOOK.md)
+- [Performance and Safety](docs/PERFORMANCE_AND_SAFETY.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Architecture](docs/ARCHITECTURE.md)
 
 ## Build
 
@@ -50,80 +109,10 @@ The compiled plugin jar is created at:
 target/ruinedcollections-1.0.0.jar
 ```
 
-## Install
-
-1. Build or download the jar.
-2. Put `ruinedcollections-1.0.0.jar` in your server `plugins` folder.
-3. Start the server.
-4. Edit files in `plugins/RuinedCollections`.
-5. Run `/rc reload`.
-
-## Quick Start
-
-Open the player menu:
-
-```text
-/collections
-```
-
-Create an Oak Log-style collection:
-
-```text
-/rc create oak_log OAK_LOG &6Oak Log
-```
-
-Add a new tier:
-
-```text
-/rc tier add oak_log IV 1000
-```
-
-Add a command reward:
-
-```text
-/rc reward add-command oak_log IV console give %player% oak_log 64
-```
-
-Add progress manually:
-
-```text
-/rc add Rique oak_log 50
-```
-
-Export data:
-
-```text
-/rc export backup.yml
-```
-
-Preview an import:
-
-```text
-/rc import backup.yml
-```
-
-Apply an import:
-
-```text
-/rc import backup.yml --apply
-```
-
-## Documentation
-
-- [Configuration](docs/CONFIGURATION.md)
-- [Collections](docs/COLLECTIONS.md)
-- [Commands](docs/COMMANDS.md)
-- [Rewards](docs/REWARDS.md)
-- [Menus](docs/MENUS.md)
-- [Placeholders](docs/PLACEHOLDERS.md)
-- [Storage, Import, Export, and Migrations](docs/STORAGE_AND_MIGRATIONS.md)
-- [Custom Items and Custom Blocks](docs/CUSTOM_ITEMS_AND_BLOCKS.md)
-- [Performance and Safety](docs/PERFORMANCE_AND_SAFETY.md)
-
 ## License
 
 RuinedCollections is free to use on personal servers, private servers, public servers, and monetized Minecraft servers.
 
-You may not sell the source code, jar files, modified builds, forks, paid downloads, or paid access to the plugin itself.
+People may not sell the source code, jar files, modified builds, forks, paid downloads, or paid access to the plugin itself.
 
 See [LICENSE](LICENSE) for the full terms.
