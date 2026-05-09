@@ -13,6 +13,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -21,11 +22,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 public final class RuinedCollectionsCommand implements CommandExecutor, TabCompleter {
     private final RuinedCollectionsPlugin plugin;
@@ -89,9 +91,15 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
 
     private void reload(CommandSender sender) {
         require(sender, "ruinedcollections.admin.reload");
+        Set<String> before = new LinkedHashSet<>(collectionIds());
         plugin.reloadAll();
+        List<String> after = collectionIds();
+        List<String> added = after.stream().filter(id -> !before.contains(id)).toList();
         sender.sendMessage(color(plugin.getConfig().getString("messages.reloaded", "&aReloaded %collections% collections.")
                 .replace("%collections%", String.valueOf(plugin.collectionRegistry().all().size()))));
+        if (!added.isEmpty()) {
+            sender.sendMessage(color("&aNew collections loaded: &f" + String.join("&7, &f", added)));
+        }
     }
 
     private void validate(CommandSender sender) {
@@ -406,22 +414,219 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
         if (args.length == 1) {
-            return filter(args[0], List.of("help", "reload", "validate", "list", "info", "open", "add", "set", "reset", "create", "delete", "tier", "source", "reward", "export", "import"));
+            return filter(args[0], subcommands());
         }
-        if (args.length == 2 && List.of("info", "delete").contains(args[0].toLowerCase(Locale.ROOT))) {
-            return filter(args[1], collectionIds());
+        String sub = args[0].toLowerCase(Locale.ROOT);
+        return switch (sub) {
+            case "help" -> args.length == 2 ? filter(args[1], subcommands()) : List.of();
+            case "reload", "validate", "list" -> List.of();
+            case "info", "delete" -> completeCollection(args, 2);
+            case "open" -> args.length == 2 ? filter(args[1], onlinePlayerNames()) : List.of();
+            case "add", "set" -> completeProgressEdit(args);
+            case "reset" -> completeReset(args);
+            case "create" -> completeCreate(args);
+            case "tier" -> completeTier(args);
+            case "source" -> completeSource(args);
+            case "reward" -> completeReward(args);
+            case "export" -> completeExport(args);
+            case "import" -> completeImport(args);
+            default -> List.of();
+        };
+    }
+
+    private List<String> completeProgressEdit(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], playerTargets());
         }
-        if (args.length == 3 && List.of("add", "set", "reset").contains(args[0].toLowerCase(Locale.ROOT))) {
+        if (args.length == 3) {
             return filter(args[2], collectionIds());
         }
-        if (args.length == 4 && "source".equalsIgnoreCase(args[0])) {
-            return filter(args[3], Arrays.stream(CollectionSourceType.values()).map(Enum::name).toList());
+        if (args.length == 4) {
+            return filter(args[3], List.of("1", "10", "50", "100", "1000", "1000000"));
         }
         return List.of();
     }
 
+    private List<String> completeReset(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], playerTargets());
+        }
+        if (args.length == 3) {
+            return filter(args[2], collectionIds());
+        }
+        return List.of();
+    }
+
+    private List<String> completeCreate(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], List.of("collection_id", "oak_log", "obsidian", "custom_gem"));
+        }
+        if (args.length == 3) {
+            return filter(args[2], materialNames());
+        }
+        if (args.length == 4) {
+            return filter(args[3], List.of("&6Oak_Log", "&aCollection_Name", "&bCustom_Gem"));
+        }
+        return List.of();
+    }
+
+    private List<String> completeTier(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], List.of("add"));
+        }
+        if (args.length == 3) {
+            return filter(args[2], collectionIds());
+        }
+        if (args.length == 4) {
+            return filter(args[3], List.of("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"));
+        }
+        if (args.length == 5) {
+            return filter(args[4], List.of("50", "100", "500", "1000", "10000", "100000", "1000000", "1000000000"));
+        }
+        return List.of();
+    }
+
+    private List<String> completeSource(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], List.of("add"));
+        }
+        if (args.length == 3) {
+            return filter(args[2], collectionIds());
+        }
+        if (args.length == 4) {
+            return filter(args[3], enumNames(CollectionSourceType.values()));
+        }
+        if (args.length == 5) {
+            CollectionSourceType type = sourceType(args[3]);
+            if (type == CollectionSourceType.ENTITY_KILL) {
+                return filter(args[4], enumNames(EntityType.values()));
+            }
+            if (type == CollectionSourceType.MANUAL) {
+                return List.of();
+            }
+            return filter(args[4], materialNames());
+        }
+        return List.of();
+    }
+
+    private List<String> completeReward(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], List.of("add-command"));
+        }
+        if (args.length == 3) {
+            return filter(args[2], collectionIds());
+        }
+        if (args.length == 4) {
+            return filter(args[3], tierIds(args[2]));
+        }
+        if (args.length == 5) {
+            return filter(args[4], List.of("CONSOLE", "PLAYER"));
+        }
+        if (args.length == 6) {
+            return filter(args[5], List.of("give", "lp", "eco", "say", "broadcast"));
+        }
+        if (args.length == 7 && "give".equalsIgnoreCase(args[5])) {
+            return filter(args[6], List.of("%player%"));
+        }
+        if (args.length == 8 && "give".equalsIgnoreCase(args[5])) {
+            return filter(args[7], materialNames());
+        }
+        if (args.length == 9 && "give".equalsIgnoreCase(args[5])) {
+            return filter(args[8], List.of("1", "8", "16", "32", "64"));
+        }
+        if (args.length == 7 && "eco".equalsIgnoreCase(args[5])) {
+            return filter(args[6], List.of("give"));
+        }
+        if (args.length == 8 && "eco".equalsIgnoreCase(args[5])) {
+            return filter(args[7], List.of("%player%"));
+        }
+        if (args.length == 9 && "eco".equalsIgnoreCase(args[5])) {
+            return filter(args[8], List.of("100", "1000", "10000"));
+        }
+        if (args.length == 7 && "lp".equalsIgnoreCase(args[5])) {
+            return filter(args[6], List.of("user"));
+        }
+        if (args.length == 8 && "lp".equalsIgnoreCase(args[5])) {
+            return filter(args[7], List.of("%player%"));
+        }
+        if (args.length == 9 && "lp".equalsIgnoreCase(args[5])) {
+            return filter(args[8], List.of("permission", "parent"));
+        }
+        return List.of();
+    }
+
+    private List<String> completeExport(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], List.of("backup.yml", "before-update.yml", "before-import.yml"));
+        }
+        return List.of();
+    }
+
+    private List<String> completeImport(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], exportFiles());
+        }
+        if (args.length == 3) {
+            return filter(args[2], List.of("--apply"));
+        }
+        return List.of();
+    }
+
+    private List<String> completeCollection(String[] args, int index) {
+        return args.length == index ? filter(args[index - 1], collectionIds()) : List.of();
+    }
+
     private List<String> collectionIds() {
         return plugin.collectionRegistry().all().stream().map(CollectionDefinition::id).toList();
+    }
+
+    private List<String> tierIds(String collectionId) {
+        return plugin.collectionRegistry().get(collectionId)
+                .map(collection -> collection.tiers().stream().map(tier -> tier.id()).toList())
+                .orElse(List.of("I", "II", "III", "IV", "V"));
+    }
+
+    private List<String> subcommands() {
+        return List.of("help", "reload", "validate", "list", "info", "open", "add", "set", "reset", "create", "delete", "tier", "source", "reward", "export", "import");
+    }
+
+    private List<String> playerTargets() {
+        List<String> targets = new ArrayList<>(onlinePlayerNames());
+        targets.add("player");
+        targets.add("uuid");
+        return targets;
+    }
+
+    private List<String> onlinePlayerNames() {
+        return Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
+    }
+
+    private List<String> materialNames() {
+        return Arrays.stream(Material.values())
+                .filter(material -> !material.isAir())
+                .map(Enum::name)
+                .toList();
+    }
+
+    private <T extends Enum<T>> List<String> enumNames(T[] values) {
+        return Arrays.stream(values).map(Enum::name).toList();
+    }
+
+    private CollectionSourceType sourceType(String input) {
+        try {
+            return CollectionSourceType.valueOf(input.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private List<String> exportFiles() {
+        File folder = new File(plugin.getDataFolder(), "exports");
+        File[] files = folder.listFiles((dir, name) -> name.endsWith(".yml") || name.endsWith(".yaml"));
+        if (files == null || files.length == 0) {
+            return List.of("backup.yml");
+        }
+        return Arrays.stream(files).map(File::getName).toList();
     }
 
     private List<String> filter(String prefix, List<String> options) {

@@ -99,5 +99,5 @@ mvn clean package
 Output:
 
 ```text
-target/ruinedcollections-1.0.0.jar
+target/ruinedcollections-1.0.1.jar
 ```
