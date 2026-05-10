@@ -7,7 +7,7 @@ Use this page when something does not behave the way you expect.
 Check:
 
 - Server is Paper or Folia, not vanilla.
-- Server is `1.21+`.
+- Server is `1.21`, `1.21.1`, or `1.21.2`.
 - Java is `21+`.
 - The jar is in the server `plugins` folder.
 

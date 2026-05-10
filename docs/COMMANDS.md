@@ -232,7 +232,7 @@ Online players touched by the import are refreshed after the import applies.
 /rc diagnostics tail [lines]
 ```
 
-Shows diagnostics status, the diagnostics log path, or recent diagnostics lines.
+Shows diagnostics status, detected server version, support range, the diagnostics log path, or recent diagnostics lines.
 
 Permission:
 

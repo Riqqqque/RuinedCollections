@@ -66,6 +66,6 @@ SQLite is simple for smaller servers. MySQL/MariaDB is better for larger servers
 
 ## Paper And Folia
 
-The plugin keeps the runtime target at Paper `1.21-R0.1-SNAPSHOT` and `api-version: '1.21'` for broad 1.21+ compatibility.
+The plugin keeps the runtime target at Paper `1.21-R0.1-SNAPSHOT` and `api-version: '1.21'` for the Paper/Folia `1.21` through `1.21.2` support range.
 
 On Paper, scheduled work uses Bukkit's normal scheduler. On Folia, async work uses the async scheduler, plugin-wide tasks use the global region scheduler, and player-facing work such as menus, reward checks, and player messages uses the player's entity scheduler.

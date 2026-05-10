@@ -12,6 +12,7 @@ import com.rique.ruinedcollections.listener.ItemCollectionListener;
 import com.rique.ruinedcollections.listener.PlayerConnectionListener;
 import com.rique.ruinedcollections.listener.TrackingFilter;
 import com.rique.ruinedcollections.menu.MenuService;
+import com.rique.ruinedcollections.platform.ServerCompatibility;
 import com.rique.ruinedcollections.reward.RewardService;
 import com.rique.ruinedcollections.scheduler.SchedulerAdapter;
 import com.rique.ruinedcollections.scheduler.SchedulerFactory;
@@ -39,6 +40,7 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
     private DiagnosticService diagnostics;
     private LeaderboardService leaderboards;
     private SchedulerAdapter scheduler;
+    private ServerCompatibility compatibility;
 
     @Override
     public void onEnable() {
@@ -47,6 +49,13 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         diagnostics = new DiagnosticService(this);
         diagnostics.load();
         diagnostics.info("startup", "Plugin enable started", DiagnosticService.fields("version", getPluginMeta().getVersion()));
+        compatibility = ServerCompatibility.inspect();
+        compatibility.log(diagnostics);
+        if (compatibility.blocksStartup()) {
+            diagnostics.warn("startup", "Plugin disabled because the server is outside the supported version range");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
 
         collectionRegistry = new CollectionRegistry(this);
         collectionRegistry.ensureDefaults();
@@ -166,6 +175,10 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
 
     public SchedulerAdapter scheduler() {
         return scheduler;
+    }
+
+    public ServerCompatibility compatibility() {
+        return compatibility;
     }
 
     public String messagePrefix() {

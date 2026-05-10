@@ -13,6 +13,7 @@ plugins/RuinedCollections/logs/diagnostics.log
 Always logged:
 
 - plugin startup, shutdown, and reload
+- detected server platform, Minecraft version, Bukkit version, and support range
 - collection validation warnings
 - storage load/save failures
 - import and export failures
@@ -54,7 +55,7 @@ diagnostics:
 
 ## Commands
 
-Show diagnostics status and file path:
+Show diagnostics status, detected server version, support range, and file path:
 
 ```text
 /rc diagnostics
