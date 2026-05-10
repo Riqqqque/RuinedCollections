@@ -8,10 +8,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ServerCompatibility {
-    public static final String SUPPORTED_RANGE = "1.21 - 1.21.2";
+    public static final String SUPPORTED_RANGE = "1.21 - 26.1.2";
 
     private static final MinecraftVersion MINIMUM = new MinecraftVersion(1, 21, 0);
-    private static final MinecraftVersion MAXIMUM = new MinecraftVersion(1, 21, 2);
+    private static final MinecraftVersion MAXIMUM = new MinecraftVersion(26, 1, 2);
     private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?");
 
     private final String serverName;

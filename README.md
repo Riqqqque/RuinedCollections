@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Riqqqque/RuinedCollections?label=release)](https://github.com/Riqqqque/RuinedCollections/releases/latest)
 [![Download](https://img.shields.io/badge/download-jar-2ea44f)](https://github.com/Riqqqque/RuinedCollections/releases/latest/download/RuinedCollections.jar)
-[![Paper/Folia](https://img.shields.io/badge/Paper%2FFolia-1.21%20to%201.21.2-2f3136)](https://papermc.io/)
+[![Paper/Folia](https://img.shields.io/badge/Paper%2FFolia-1.21%20to%2026.1.2-2f3136)](https://papermc.io/)
 [![Java](https://img.shields.io/badge/Java-21%2B-b07219)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/license-free%20use%2C%20no%20resale-blue)](LICENSE)
 
@@ -32,13 +32,13 @@ Latest jar:
 
 ## Requirements
 
-- Paper or Folia `1.21`, `1.21.1`, or `1.21.2`
+- Paper or Folia `1.21` through `26.1.2`
 - Java `21+`
 - PlaceholderAPI optional
 - Vault plus an economy plugin optional
 - LuckPerms optional through command rewards
 
-RuinedCollections compiles against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` and `folia-supported: true`, so every runtime feature stays inside the `1.21` through `1.21.2` support range while using Folia-safe schedulers when Folia is detected.
+RuinedCollections compiles the release jar against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` and `folia-supported: true`, so the code stays compatible with the oldest supported server while still validating cleanly against the current Paper `26.1.2` API.
 
 ## Quick Start
 
