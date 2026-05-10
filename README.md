@@ -1,6 +1,7 @@
 # RuinedCollections
 
 [![Release](https://img.shields.io/github/v/release/Riqqqque/RuinedCollections?label=release)](https://github.com/Riqqqque/RuinedCollections/releases/latest)
+[![Download](https://img.shields.io/badge/download-jar-2ea44f)](https://github.com/Riqqqque/RuinedCollections/releases/latest/download/RuinedCollections.jar)
 [![Paper](https://img.shields.io/badge/Paper-1.21%2B-2f3136)](https://papermc.io/)
 [![Java](https://img.shields.io/badge/Java-21%2B-b07219)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/license-free%20use%2C%20no%20resale-blue)](LICENSE)
