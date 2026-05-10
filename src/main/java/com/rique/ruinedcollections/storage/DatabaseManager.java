@@ -99,11 +99,26 @@ public final class DatabaseManager {
                     + "created_at BIGINT NOT NULL,"
                     + "PRIMARY KEY (world, x, y, z)"
                     + ")");
-            try (ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + tablePrefix + "schema")) {
-                if (resultSet.next() && resultSet.getInt(1) == 0) {
-                    statement.executeUpdate("INSERT INTO " + tablePrefix + "schema (version) VALUES (1)");
-                }
+            int schemaVersion = schemaVersion(statement);
+            if (schemaVersion == 0) {
+                statement.executeUpdate("INSERT INTO " + tablePrefix + "schema (version) VALUES (1)");
+                schemaVersion = 1;
             }
+            statement.execute("CREATE TABLE IF NOT EXISTS " + tablePrefix + "player_names ("
+                    + "player_uuid VARCHAR(36) NOT NULL,"
+                    + "player_name VARCHAR(64) NOT NULL,"
+                    + "updated_at BIGINT NOT NULL,"
+                    + "PRIMARY KEY (player_uuid)"
+                    + ")");
+            if (schemaVersion < 2) {
+                statement.executeUpdate("UPDATE " + tablePrefix + "schema SET version=2");
+            }
+        }
+    }
+
+    private int schemaVersion(Statement statement) throws SQLException {
+        try (ResultSet resultSet = statement.executeQuery("SELECT version FROM " + tablePrefix + "schema LIMIT 1")) {
+            return resultSet.next() ? resultSet.getInt("version") : 0;
         }
     }
 

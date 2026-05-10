@@ -214,6 +214,8 @@ plugins/RuinedCollections/exports/
 /rc import <file>
 ```
 
+Shows how many progress rows, claimed tiers, and saved player names will be imported.
+
 ### Import Apply
 
 ```text

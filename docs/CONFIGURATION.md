@@ -87,11 +87,14 @@ leaderboards:
   empty-name: '-'
   empty-value: '0'
   loading-value: '...'
+  unknown-name-format: 'Unknown-%short_uuid%'
 ```
 
 Leaderboard placeholders use a cache so PlaceholderAPI scoreboards do not query storage every tick.
 
 `entries-per-collection` controls how many top players are cached per collection. `rank-cache-seconds` controls how long player rank placeholders stay cached before being refreshed async.
+
+`unknown-name-format` is used only when a leaderboard row has a UUID but the plugin has never stored a player name for it. `%uuid%` and `%short_uuid%` are supported. Normal offline players use the last name saved when they joined the server.
 
 ## Tracking Rules
 

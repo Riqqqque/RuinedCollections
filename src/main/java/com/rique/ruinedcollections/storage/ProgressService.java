@@ -53,6 +53,7 @@ public final class ProgressService {
 
     public void load(Player player) {
         UUID playerId = player.getUniqueId();
+        recordPlayerName(playerId, player.getName());
         if (sessions.containsKey(playerId) || loading.putIfAbsent(playerId, true) != null) {
             return;
         }
@@ -119,13 +120,17 @@ public final class ProgressService {
             return;
         }
         repository.addProgressBatch(Map.of(new ProgressKey(playerId, collectionId), amount))
-                .exceptionally(throwable -> {
-                    plugin.diagnostics().error("progress", "Could not add manual progress", DiagnosticService.fields(
-                            "uuid", playerId,
-                            "collection", collectionId,
-                            "amount", amount
-                    ), throwable);
-                    return null;
+                .whenComplete((ignored, throwable) -> {
+                    if (throwable != null) {
+                        plugin.diagnostics().error("progress", "Could not add manual progress", DiagnosticService.fields(
+                                "uuid", playerId,
+                                "collection", collectionId,
+                                "amount", amount
+                        ), throwable);
+                        return;
+                    }
+                    plugin.leaderboards().invalidate(playerId, collectionId);
+                    plugin.leaderboards().refreshCollection(collectionId);
                 });
     }
 
@@ -152,6 +157,8 @@ public final class ProgressService {
             if (player != null && collection != null && liveSession != null) {
                 Bukkit.getScheduler().runTask(plugin, () -> rewardService.check(player, collection, amount, liveSession));
             }
+            plugin.leaderboards().invalidate(playerId, collectionId);
+            plugin.leaderboards().refreshCollection(collectionId);
         });
     }
 
@@ -242,6 +249,16 @@ public final class ProgressService {
         for (Map.Entry<ProgressKey, Long> entry : batch.entrySet()) {
             addQueued(pendingFlush, entry.getKey(), entry.getValue());
         }
+    }
+
+    public void recordPlayerName(UUID playerId, String playerName) {
+        repository.savePlayerName(playerId, playerName).exceptionally(throwable -> {
+            plugin.diagnostics().error("progress", "Could not save player name", DiagnosticService.fields(
+                    "uuid", playerId,
+                    "player", playerName
+            ), throwable);
+            return null;
+        });
     }
 
     private void addQueued(Map<ProgressKey, AtomicLong> queue, ProgressKey key, long amount) {

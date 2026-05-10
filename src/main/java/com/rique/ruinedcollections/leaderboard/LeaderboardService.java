@@ -6,7 +6,7 @@ import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.storage.LeaderboardRow;
 import com.rique.ruinedcollections.util.Longs;
 import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
@@ -30,6 +30,7 @@ public final class LeaderboardService {
     private String emptyName;
     private String emptyValue;
     private String loadingValue;
+    private String unknownNameFormat;
 
     public LeaderboardService(RuinedCollectionsPlugin plugin) {
         this.plugin = plugin;
@@ -103,17 +104,30 @@ public final class LeaderboardService {
                 .map(CollectionDefinition::id)
                 .toList();
         for (String collectionId : collectionIds) {
-            plugin.repository().loadLeaderboard(collectionId, limit).whenComplete((rows, throwable) -> {
-                if (throwable != null) {
-                    plugin.diagnostics().error("leaderboards", "Could not load leaderboard", DiagnosticService.fields(
-                            "collection", collectionId,
-                            "limit", limit
-                    ), throwable);
-                    return;
-                }
-                Bukkit.getScheduler().runTask(plugin, () -> store(collectionId, rows));
-            });
+            refreshCollection(collectionId);
         }
+    }
+
+    public void refreshCollection(String collectionId) {
+        if (!enabled) {
+            return;
+        }
+        plugin.repository().loadLeaderboard(collectionId, limit).whenComplete((rows, throwable) -> {
+            if (throwable != null) {
+                plugin.diagnostics().error("leaderboards", "Could not load leaderboard", DiagnosticService.fields(
+                        "collection", collectionId,
+                        "limit", limit
+                ), throwable);
+                return;
+            }
+            Bukkit.getScheduler().runTask(plugin, () -> store(collectionId, rows));
+        });
+    }
+
+    public void invalidate(UUID playerId, String collectionId) {
+        RankKey key = new RankKey(playerId, normalize(collectionId));
+        rankCache.remove(key);
+        rankLoads.remove(key);
     }
 
     private void load() {
@@ -126,6 +140,10 @@ public final class LeaderboardService {
         emptyName = plugin.getConfig().getString("leaderboards.empty-name", "-");
         emptyValue = plugin.getConfig().getString("leaderboards.empty-value", "0");
         loadingValue = plugin.getConfig().getString("leaderboards.loading-value", "...");
+        unknownNameFormat = plugin.getConfig().getString("leaderboards.unknown-name-format", "Unknown-%short_uuid%");
+        if (unknownNameFormat == null || unknownNameFormat.isBlank()) {
+            unknownNameFormat = "Unknown-%short_uuid%";
+        }
         plugin.diagnostics().info("leaderboards", "Leaderboards loaded", DiagnosticService.fields(
                 "enabled", enabled,
                 "limit", limit,
@@ -137,7 +155,7 @@ public final class LeaderboardService {
     private void store(String collectionId, List<LeaderboardRow> rows) {
         List<LeaderboardEntry> entries = new ArrayList<>();
         for (LeaderboardRow row : rows) {
-            entries.add(new LeaderboardEntry(row.playerId(), resolveName(row.playerId()), row.progress()));
+            entries.add(new LeaderboardEntry(row.playerId(), resolveName(row), row.progress()));
         }
         leaderboards.put(normalize(collectionId), List.copyOf(entries));
         plugin.diagnostics().debug("progress", "Leaderboard refreshed", DiagnosticService.fields(
@@ -163,10 +181,18 @@ public final class LeaderboardService {
         });
     }
 
-    private String resolveName(UUID playerId) {
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerId);
-        String name = player.getName();
-        return name == null || name.isBlank() ? playerId.toString() : name;
+    private String resolveName(LeaderboardRow row) {
+        if (row.playerName() != null && !row.playerName().isBlank()) {
+            return row.playerName();
+        }
+        Player onlinePlayer = Bukkit.getPlayer(row.playerId());
+        if (onlinePlayer != null) {
+            return onlinePlayer.getName();
+        }
+        String uuid = row.playerId().toString();
+        return unknownNameFormat
+                .replace("%uuid%", uuid)
+                .replace("%short_uuid%", uuid.substring(0, 8));
     }
 
     private String empty(String field) {

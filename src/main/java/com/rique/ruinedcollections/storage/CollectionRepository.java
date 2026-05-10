@@ -138,6 +138,35 @@ public final class CollectionRepository {
         }
     }
 
+    public CompletableFuture<Void> savePlayerName(UUID playerId, String playerName) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                savePlayerNameSync(playerId, playerName);
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, executor);
+    }
+
+    public void savePlayerNameSync(UUID playerId, String playerName) throws SQLException {
+        if (playerId == null || playerName == null || playerName.isBlank()) {
+            return;
+        }
+        String cleanName = playerName.length() > 64 ? playerName.substring(0, 64) : playerName;
+        String sql = storageType == StorageType.SQLITE
+                ? "INSERT INTO " + prefix + "player_names (player_uuid, player_name, updated_at) VALUES (?, ?, ?) "
+                + "ON CONFLICT(player_uuid) DO UPDATE SET player_name = excluded.player_name, updated_at = excluded.updated_at"
+                : "INSERT INTO " + prefix + "player_names (player_uuid, player_name, updated_at) VALUES (?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE player_name = VALUES(player_name), updated_at = VALUES(updated_at)";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, playerId.toString());
+            statement.setString(2, cleanName);
+            statement.setLong(3, System.currentTimeMillis());
+            statement.executeUpdate();
+        }
+    }
+
     public CompletableFuture<List<LeaderboardRow>> loadLeaderboard(String collectionId, int limit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -152,14 +181,18 @@ public final class CollectionRepository {
         List<LeaderboardRow> rows = new ArrayList<>();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT player_uuid, progress FROM " + prefix + "player_progress "
-                             + "WHERE collection_id=? AND progress > 0 ORDER BY progress DESC, player_uuid ASC LIMIT ?")) {
+                     "SELECT p.player_uuid, n.player_name, p.progress "
+                             + "FROM " + prefix + "player_progress p "
+                             + "LEFT JOIN " + prefix + "player_names n ON p.player_uuid = n.player_uuid "
+                             + "WHERE p.collection_id=? AND p.progress > 0 "
+                             + "ORDER BY p.progress DESC, p.player_uuid ASC LIMIT ?")) {
             statement.setString(1, collectionId);
             statement.setInt(2, Math.max(1, limit));
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     rows.add(new LeaderboardRow(
                             UUID.fromString(resultSet.getString("player_uuid")),
+                            resultSet.getString("player_name"),
                             Math.max(0, resultSet.getLong("progress"))
                     ));
                 }
@@ -230,18 +263,18 @@ public final class CollectionRepository {
         }
     }
 
-    public CompletableFuture<Void> applySnapshot(List<ProgressRow> progressRows, List<ClaimedRow> claimedRows) {
+    public CompletableFuture<Void> applySnapshot(List<ProgressRow> progressRows, List<ClaimedRow> claimedRows, List<PlayerNameRow> playerNames) {
         return CompletableFuture.runAsync(() -> {
             try {
-                applySnapshotSync(progressRows, claimedRows);
+                applySnapshotSync(progressRows, claimedRows, playerNames);
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
         }, executor);
     }
 
-    public void applySnapshotSync(List<ProgressRow> progressRows, List<ClaimedRow> claimedRows) throws SQLException {
-        if (progressRows.isEmpty() && claimedRows.isEmpty()) {
+    public void applySnapshotSync(List<ProgressRow> progressRows, List<ClaimedRow> claimedRows, List<PlayerNameRow> playerNames) throws SQLException {
+        if (progressRows.isEmpty() && claimedRows.isEmpty() && playerNames.isEmpty()) {
             return;
         }
         String progressSql = storageType == StorageType.SQLITE
@@ -252,10 +285,16 @@ public final class CollectionRepository {
         String claimSql = storageType == StorageType.SQLITE
                 ? "INSERT OR IGNORE INTO " + prefix + "claimed_tiers (player_uuid, collection_id, tier_id, claimed_at) VALUES (?, ?, ?, ?)"
                 : "INSERT IGNORE INTO " + prefix + "claimed_tiers (player_uuid, collection_id, tier_id, claimed_at) VALUES (?, ?, ?, ?)";
+        String nameSql = storageType == StorageType.SQLITE
+                ? "INSERT INTO " + prefix + "player_names (player_uuid, player_name, updated_at) VALUES (?, ?, ?) "
+                + "ON CONFLICT(player_uuid) DO UPDATE SET player_name = excluded.player_name, updated_at = excluded.updated_at"
+                : "INSERT INTO " + prefix + "player_names (player_uuid, player_name, updated_at) VALUES (?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE player_name = VALUES(player_name), updated_at = VALUES(updated_at)";
         long now = System.currentTimeMillis();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement progressStatement = connection.prepareStatement(progressSql);
-             PreparedStatement claimStatement = connection.prepareStatement(claimSql)) {
+             PreparedStatement claimStatement = connection.prepareStatement(claimSql);
+             PreparedStatement nameStatement = connection.prepareStatement(nameSql)) {
             connection.setAutoCommit(false);
             try {
                 for (ProgressRow row : progressRows) {
@@ -275,6 +314,18 @@ public final class CollectionRepository {
                     claimStatement.addBatch();
                 }
                 claimStatement.executeBatch();
+
+                for (PlayerNameRow row : playerNames) {
+                    if (row.playerName() == null || row.playerName().isBlank()) {
+                        continue;
+                    }
+                    String cleanName = row.playerName().length() > 64 ? row.playerName().substring(0, 64) : row.playerName();
+                    nameStatement.setString(1, row.playerId().toString());
+                    nameStatement.setString(2, cleanName);
+                    nameStatement.setLong(3, now);
+                    nameStatement.addBatch();
+                }
+                nameStatement.executeBatch();
                 connection.commit();
             } catch (SQLException exception) {
                 connection.rollback();
@@ -352,6 +403,32 @@ public final class CollectionRepository {
                         UUID.fromString(resultSet.getString("player_uuid")),
                         resultSet.getString("collection_id"),
                         resultSet.getString("tier_id")
+                ));
+            }
+        }
+        return rows;
+    }
+
+    public CompletableFuture<List<PlayerNameRow>> loadAllPlayerNames() {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return loadAllPlayerNamesSync();
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, executor);
+    }
+
+    public List<PlayerNameRow> loadAllPlayerNamesSync() throws SQLException {
+        List<PlayerNameRow> rows = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT player_uuid, player_name FROM " + prefix + "player_names");
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                rows.add(new PlayerNameRow(
+                        UUID.fromString(resultSet.getString("player_uuid")),
+                        resultSet.getString("player_name")
                 ));
             }
         }
