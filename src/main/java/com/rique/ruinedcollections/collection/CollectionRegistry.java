@@ -24,7 +24,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.logging.Level;
 
 public final class CollectionRegistry {
     private static final String ID_PATTERN = "[a-z0-9_-]+";
@@ -81,6 +80,7 @@ public final class CollectionRegistry {
             }
         }
         buildIndexes();
+        validateMenuSlots(issues);
         for (String issue : issues) {
             plugin.getLogger().warning(issue);
         }
@@ -221,7 +221,8 @@ public final class CollectionRegistry {
         YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
         List<Map<?, ?>> tiers = new ArrayList<>(config.getMapList("tiers"));
         boolean changed = false;
-        for (Map<?, ?> rawTier : tiers) {
+        for (int index = 0; index < tiers.size(); index++) {
+            Map<?, ?> rawTier = tiers.get(index);
             Map<String, Object> tier = mutable(rawTier);
             if (!tierId.equalsIgnoreCase(String.valueOf(tier.get("id")))) {
                 continue;
@@ -241,7 +242,7 @@ public final class CollectionRegistry {
             reward.put("command", command);
             rewards.add(reward);
             tier.put("rewards", rewards);
-            tiers.set(tiers.indexOf(rawTier), tier);
+            tiers.set(index, tier);
             changed = true;
             break;
         }
@@ -313,6 +314,28 @@ public final class CollectionRegistry {
         ));
     }
 
+    private void validateMenuSlots(List<String> issues) {
+        Map<Integer, String> usedSlots = new HashMap<>();
+        for (CollectionDefinition collection : collections.values()) {
+            if (!collection.enabled() || collection.menuSlot() < 0) {
+                continue;
+            }
+            if (collection.menuSlot() > 53) {
+                issues.add("Collection '" + collection.id() + "' uses menu-slot " + collection.menuSlot()
+                        + ", but inventory slots must be 0-53.");
+            }
+            if (collection.menuSlot() == 45 || collection.menuSlot() == 49 || collection.menuSlot() == 53) {
+                issues.add("Collection '" + collection.id() + "' uses menu-slot " + collection.menuSlot()
+                        + ", which is reserved for menu controls.");
+            }
+            String existing = usedSlots.putIfAbsent(collection.menuSlot(), collection.id());
+            if (existing != null) {
+                issues.add("Collection '" + collection.id() + "' uses menu-slot " + collection.menuSlot()
+                        + ", already used by '" + existing + "'.");
+            }
+        }
+    }
+
     private void saveDefault(String path) {
         if (!new File(plugin.getDataFolder(), path).exists()) {
             plugin.saveResource(path, false);
@@ -328,18 +351,29 @@ public final class CollectionRegistry {
             return Optional.empty();
         }
 
+        List<String> materialValues = stringList(map.get("materials"));
         Set<Material> materials = new LinkedHashSet<>();
-        for (String value : stringList(map.get("materials"))) {
+        for (String value : materialValues) {
             material(value, file, issues).ifPresent(materials::add);
         }
 
+        List<String> entityValues = stringList(map.get("entities"));
         Set<EntityType> entities = new LinkedHashSet<>();
-        for (String value : stringList(map.get("entities"))) {
+        for (String value : entityValues) {
             try {
                 entities.add(EntityType.valueOf(value.toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException exception) {
                 issues.add(file.getName() + ": invalid entity type '" + value + "'.");
             }
+        }
+
+        if (type == CollectionSourceType.ENTITY_KILL && !entityValues.isEmpty() && entities.isEmpty()) {
+            issues.add(file.getName() + ": skipped entity source because no valid entities were found.");
+            return Optional.empty();
+        }
+        if (type != CollectionSourceType.ENTITY_KILL && type != CollectionSourceType.MANUAL && !materialValues.isEmpty() && materials.isEmpty()) {
+            issues.add(file.getName() + ": skipped material source because no valid materials were found.");
+            return Optional.empty();
         }
 
         ItemMatcher matcher = parseItemMatcher(map.get("item-match"), file, issues);
@@ -490,7 +524,7 @@ public final class CollectionRegistry {
 
     private Optional<Material> material(String value, File file, List<String> issues) {
         Material material = Material.matchMaterial(value == null ? "" : value);
-        if (material == null) {
+        if (material == null || material.isAir()) {
             issues.add(file.getName() + ": invalid material '" + value + "'.");
             return Optional.empty();
         }

@@ -6,6 +6,7 @@ import com.rique.ruinedcollections.collection.CollectionTier;
 import com.rique.ruinedcollections.collection.DisplayItem;
 import com.rique.ruinedcollections.util.Longs;
 import com.rique.ruinedcollections.util.Text;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -20,22 +21,14 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class MenuService implements Listener {
-    private static final int PREVIOUS_SLOT = 45;
-    private static final int BACK_SLOT = 49;
-    private static final int NEXT_SLOT = 53;
-    private static final int[] CONTENT_SLOTS = {
-            10, 11, 12, 13, 14, 15, 16,
-            19, 20, 21, 22, 23, 24, 25,
-            28, 29, 30, 31, 32, 33, 34,
-            37, 38, 39, 40, 41, 42, 43
-    };
-
     private final RuinedCollectionsPlugin plugin;
     private YamlConfiguration config;
 
@@ -52,29 +45,33 @@ public final class MenuService implements Listener {
         List<CollectionDefinition> collections = plugin.collectionRegistry().enabledCollections();
         int size = validSize(config.getInt("main.size", 54));
         MainMenuHolder holder = new MainMenuHolder(Math.max(0, page));
-        Inventory inventory = Bukkit.createInventory(holder, size, Text.color(plugin.getConfig().getString("menus.main-title", "&8Collections")));
+        Inventory inventory = Bukkit.createInventory(holder, size, Text.component(plugin.getConfig().getString("menus.main-title", "&8Collections")));
         holder.setInventory(inventory);
         fill(inventory, "main.filler");
 
-        int start = holder.page() * CONTENT_SLOTS.length;
-        for (int index = 0; index < CONTENT_SLOTS.length; index++) {
+        int[] contentSlots = contentSlots(size);
+        int start = holder.page() * contentSlots.length;
+        Set<Integer> usedSlots = new HashSet<>();
+        for (int index = 0; index < contentSlots.length; index++) {
             int collectionIndex = start + index;
             if (collectionIndex >= collections.size()) {
                 break;
             }
             CollectionDefinition collection = collections.get(collectionIndex);
-            int slot = collection.menuSlot() >= 0 && collection.menuSlot() < size && holder.page() == 0
-                    ? collection.menuSlot()
-                    : CONTENT_SLOTS[index];
+            int slot = collectionSlot(collection.menuSlot(), contentSlots[index], contentSlots, usedSlots, size, holder.page() == 0);
+            if (slot < 0) {
+                continue;
+            }
+            usedSlots.add(slot);
             inventory.setItem(slot, collectionItem(player, collection));
             holder.setCollection(slot, collection.id());
         }
 
         if (holder.page() > 0) {
-            inventory.setItem(PREVIOUS_SLOT, simpleItem(material(plugin.getConfig().getString("menus.previous-item", "ARROW"), Material.ARROW), "&ePrevious"));
+            inventory.setItem(previousSlot(size), simpleItem(material(plugin.getConfig().getString("menus.previous-item", "ARROW"), Material.ARROW), "&ePrevious"));
         }
-        if (start + CONTENT_SLOTS.length < collections.size()) {
-            inventory.setItem(NEXT_SLOT, simpleItem(material(plugin.getConfig().getString("menus.next-item", "ARROW"), Material.ARROW), "&eNext"));
+        if (start + contentSlots.length < collections.size()) {
+            inventory.setItem(nextSlot(size), simpleItem(material(plugin.getConfig().getString("menus.next-item", "ARROW"), Material.ARROW), "&eNext"));
         }
         player.openInventory(inventory);
     }
@@ -84,16 +81,17 @@ public final class MenuService implements Listener {
         DetailMenuHolder holder = new DetailMenuHolder(collection.id());
         String title = plugin.getConfig().getString("menus.detail-title", "&8%collection%")
                 .replace("%collection%", Text.color(collection.displayName()));
-        Inventory inventory = Bukkit.createInventory(holder, size, Text.color(title));
+        Inventory inventory = Bukkit.createInventory(holder, size, Text.component(title));
         holder.setInventory(inventory);
         fill(inventory, "detail.filler");
 
         long progress = plugin.progressService().cachedProgress(player.getUniqueId(), collection.id());
-        for (int i = 0; i < collection.tiers().size() && i < CONTENT_SLOTS.length; i++) {
+        int[] contentSlots = contentSlots(size);
+        for (int i = 0; i < collection.tiers().size() && i < contentSlots.length; i++) {
             CollectionTier tier = collection.tiers().get(i);
-            inventory.setItem(CONTENT_SLOTS[i], tierItem(player, collection, tier, progress));
+            inventory.setItem(contentSlots[i], tierItem(player, collection, tier, progress));
         }
-        inventory.setItem(BACK_SLOT, simpleItem(material(plugin.getConfig().getString("menus.back-item", "BARRIER"), Material.BARRIER), "&cBack"));
+        inventory.setItem(backSlot(size), simpleItem(material(plugin.getConfig().getString("menus.back-item", "BARRIER"), Material.BARRIER), "&cBack"));
         player.openInventory(inventory);
     }
 
@@ -104,11 +102,12 @@ public final class MenuService implements Listener {
         }
         if (event.getInventory().getHolder() instanceof MainMenuHolder holder) {
             event.setCancelled(true);
-            if (event.getRawSlot() == PREVIOUS_SLOT && holder.page() > 0) {
+            int size = event.getInventory().getSize();
+            if (event.getRawSlot() == previousSlot(size) && holder.page() > 0) {
                 openMain(player, holder.page() - 1);
                 return;
             }
-            if (event.getRawSlot() == NEXT_SLOT) {
+            if (event.getRawSlot() == nextSlot(size)) {
                 openMain(player, holder.page() + 1);
                 return;
             }
@@ -118,7 +117,7 @@ public final class MenuService implements Listener {
             }
         } else if (event.getInventory().getHolder() instanceof DetailMenuHolder) {
             event.setCancelled(true);
-            if (event.getRawSlot() == BACK_SLOT) {
+            if (event.getRawSlot() == backSlot(event.getInventory().getSize())) {
                 openMain(player, 0);
             }
         }
@@ -143,15 +142,15 @@ public final class MenuService implements Listener {
         ItemStack item = displayItem(collection.displayItem());
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(Text.color(plugin.hooks().placeholders(player, Text.placeholders(collection.displayName(), placeholders))));
-            List<String> lore = new ArrayList<>();
+            meta.displayName(Text.component(plugin.hooks().placeholders(player, Text.placeholders(collection.displayName(), placeholders))));
+            List<Component> lore = new ArrayList<>();
             for (String line : collection.description()) {
-                lore.add(Text.color(plugin.hooks().placeholders(player, Text.placeholders(line, placeholders))));
+                lore.add(Text.component(plugin.hooks().placeholders(player, Text.placeholders(line, placeholders))));
             }
             for (String line : config.getStringList("main.collection-lore")) {
-                lore.add(Text.color(plugin.hooks().placeholders(player, Text.placeholders(line, placeholders))));
+                lore.add(Text.component(plugin.hooks().placeholders(player, Text.placeholders(line, placeholders))));
             }
-            meta.setLore(lore);
+            meta.lore(lore);
             meta.addItemFlags(ItemFlag.values());
             item.setItemMeta(meta);
         }
@@ -164,16 +163,16 @@ public final class MenuService implements Listener {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(Text.color((unlocked ? "&a" : "&c") + collection.displayName() + " " + tier.id()));
+            meta.displayName(Text.component((unlocked ? "&a" : "&c") + collection.displayName() + " " + tier.id()));
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("goal", Longs.format(tier.goal()));
             placeholders.put("progress", Longs.format(progress));
             placeholders.put("collection", Text.color(collection.displayName()));
             placeholders.put("tier", tier.id());
-            List<String> lore = config.getStringList(unlocked ? "detail.tier-lore.unlocked" : "detail.tier-lore.locked").stream()
-                    .map(line -> Text.color(plugin.hooks().placeholders(player, Text.placeholders(line, placeholders))))
+            List<Component> lore = config.getStringList(unlocked ? "detail.tier-lore.unlocked" : "detail.tier-lore.locked").stream()
+                    .map(line -> Text.component(plugin.hooks().placeholders(player, Text.placeholders(line, placeholders))))
                     .toList();
-            meta.setLore(lore);
+            meta.lore(lore);
             meta.addItemFlags(ItemFlag.values());
             item.setItemMeta(meta);
         }
@@ -206,7 +205,7 @@ public final class MenuService implements Listener {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(Text.color(name));
+            meta.displayName(Text.component(name));
             meta.addItemFlags(ItemFlag.values());
             item.setItemMeta(meta);
         }
@@ -219,12 +218,58 @@ public final class MenuService implements Listener {
     }
 
     private int validSize(int size) {
-        if (size < 9) {
-            return 9;
+        if (size < 27) {
+            return 27;
         }
         if (size > 54) {
             return 54;
         }
         return (size / 9) * 9;
+    }
+
+    private int[] contentSlots(int size) {
+        int rows = size / 9;
+        List<Integer> slots = new ArrayList<>();
+        for (int row = 1; row < rows - 1; row++) {
+            for (int column = 1; column <= 7; column++) {
+                slots.add(row * 9 + column);
+            }
+        }
+        return slots.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    private boolean usableCollectionSlot(int slot, int size) {
+        return slot >= 0 && slot < size && !isControlSlot(slot, size);
+    }
+
+    private int collectionSlot(int configuredSlot, int defaultSlot, int[] contentSlots, Set<Integer> usedSlots, int size, boolean allowConfiguredSlot) {
+        if (allowConfiguredSlot && usableCollectionSlot(configuredSlot, size) && !usedSlots.contains(configuredSlot)) {
+            return configuredSlot;
+        }
+        if (!usedSlots.contains(defaultSlot)) {
+            return defaultSlot;
+        }
+        for (int slot : contentSlots) {
+            if (!usedSlots.contains(slot)) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    private boolean isControlSlot(int slot, int size) {
+        return slot == previousSlot(size) || slot == backSlot(size) || slot == nextSlot(size);
+    }
+
+    private int previousSlot(int size) {
+        return size - 9;
+    }
+
+    private int backSlot(int size) {
+        return size - 5;
+    }
+
+    private int nextSlot(int size) {
+        return size - 1;
     }
 }

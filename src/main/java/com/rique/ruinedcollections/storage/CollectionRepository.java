@@ -162,6 +162,80 @@ public final class CollectionRepository {
         }
     }
 
+    public CompletableFuture<Void> applySnapshot(List<ProgressRow> progressRows, List<ClaimedRow> claimedRows) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                applySnapshotSync(progressRows, claimedRows);
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, executor);
+    }
+
+    public void applySnapshotSync(List<ProgressRow> progressRows, List<ClaimedRow> claimedRows) throws SQLException {
+        if (progressRows.isEmpty() && claimedRows.isEmpty()) {
+            return;
+        }
+        String progressSql = storageType == StorageType.SQLITE
+                ? "INSERT INTO " + prefix + "player_progress (player_uuid, collection_id, progress, updated_at) VALUES (?, ?, ?, ?) "
+                + "ON CONFLICT(player_uuid, collection_id) DO UPDATE SET progress = excluded.progress, updated_at = excluded.updated_at"
+                : "INSERT INTO " + prefix + "player_progress (player_uuid, collection_id, progress, updated_at) VALUES (?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE progress = VALUES(progress), updated_at = VALUES(updated_at)";
+        String claimSql = storageType == StorageType.SQLITE
+                ? "INSERT OR IGNORE INTO " + prefix + "claimed_tiers (player_uuid, collection_id, tier_id, claimed_at) VALUES (?, ?, ?, ?)"
+                : "INSERT IGNORE INTO " + prefix + "claimed_tiers (player_uuid, collection_id, tier_id, claimed_at) VALUES (?, ?, ?, ?)";
+        long now = System.currentTimeMillis();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement progressStatement = connection.prepareStatement(progressSql);
+             PreparedStatement claimStatement = connection.prepareStatement(claimSql)) {
+            connection.setAutoCommit(false);
+            try {
+                for (ProgressRow row : progressRows) {
+                    progressStatement.setString(1, row.playerId().toString());
+                    progressStatement.setString(2, row.collectionId());
+                    progressStatement.setLong(3, Math.max(0, row.progress()));
+                    progressStatement.setLong(4, now);
+                    progressStatement.addBatch();
+                }
+                progressStatement.executeBatch();
+
+                for (ClaimedRow row : claimedRows) {
+                    claimStatement.setString(1, row.playerId().toString());
+                    claimStatement.setString(2, row.collectionId());
+                    claimStatement.setString(3, row.tierId());
+                    claimStatement.setLong(4, now);
+                    claimStatement.addBatch();
+                }
+                claimStatement.executeBatch();
+                connection.commit();
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            }
+        }
+    }
+
+    public CompletableFuture<Void> unclaimTier(UUID playerId, String collectionId, String tierId) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                unclaimTierSync(playerId, collectionId, tierId);
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, executor);
+    }
+
+    public void unclaimTierSync(UUID playerId, String collectionId, String tierId) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "DELETE FROM " + prefix + "claimed_tiers WHERE player_uuid=? AND collection_id=? AND tier_id=?")) {
+            statement.setString(1, playerId.toString());
+            statement.setString(2, collectionId);
+            statement.setString(3, tierId);
+            statement.executeUpdate();
+        }
+    }
+
     public CompletableFuture<List<ProgressRow>> loadAllProgress() {
         return CompletableFuture.supplyAsync(() -> {
             try {

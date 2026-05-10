@@ -95,12 +95,12 @@ public final class ProgressService {
         UUID playerId = player.getUniqueId();
         PlayerProgressSession session = sessions.get(playerId);
         if (session == null) {
-            waitingForLoad.computeIfAbsent(new ProgressKey(playerId, collection.id()), ignored -> new AtomicLong()).addAndGet(amount);
+            addQueued(waitingForLoad, new ProgressKey(playerId, collection.id()), amount);
             load(player);
             return;
         }
         long progress = session.addProgress(collection.id(), amount);
-        pendingFlush.computeIfAbsent(new ProgressKey(playerId, collection.id()), ignored -> new AtomicLong()).addAndGet(amount);
+        addQueued(pendingFlush, new ProgressKey(playerId, collection.id()), amount);
         rewardService.check(player, collection, progress, session);
     }
 
@@ -207,7 +207,7 @@ public final class ProgressService {
                 continue;
             }
             long progress = session.addProgress(collection.id(), amount);
-            pendingFlush.computeIfAbsent(entry.getKey(), ignored -> new AtomicLong()).addAndGet(amount);
+            addQueued(pendingFlush, entry.getKey(), amount);
             rewardService.check(player, collection, progress, session);
         }
     }
@@ -225,8 +225,15 @@ public final class ProgressService {
 
     private void restorePending(Map<ProgressKey, Long> batch) {
         for (Map.Entry<ProgressKey, Long> entry : batch.entrySet()) {
-            pendingFlush.computeIfAbsent(entry.getKey(), ignored -> new AtomicLong())
-                    .addAndGet(Longs.addClamped(0, entry.getValue()));
+            addQueued(pendingFlush, entry.getKey(), entry.getValue());
         }
+    }
+
+    private void addQueued(Map<ProgressKey, AtomicLong> queue, ProgressKey key, long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        queue.computeIfAbsent(key, ignored -> new AtomicLong())
+                .updateAndGet(current -> Longs.addClamped(current, amount));
     }
 }

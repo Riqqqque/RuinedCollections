@@ -21,7 +21,7 @@ public record ItemMatcher(Integer customModelData, String displayName, List<Pers
             }
         }
         if (displayName != null && !displayName.isBlank()) {
-            if (!meta.hasDisplayName() || !Text.strip(meta.getDisplayName()).equalsIgnoreCase(Text.strip(displayName))) {
+            if (!meta.hasDisplayName() || !Text.strip(Text.legacy(meta.displayName())).equalsIgnoreCase(Text.strip(displayName))) {
                 return false;
             }
         }

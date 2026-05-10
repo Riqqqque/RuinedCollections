@@ -301,6 +301,15 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             return;
         }
         String key = args.length >= 5 ? args[4] : "";
+        if (type == CollectionSourceType.ENTITY_KILL && entityType(key) == null) {
+            sender.sendMessage(color("&cInvalid entity type."));
+            return;
+        }
+        Material material = Material.matchMaterial(key);
+        if (type != CollectionSourceType.ENTITY_KILL && type != CollectionSourceType.MANUAL && (material == null || material.isAir())) {
+            sender.sendMessage(color("&cInvalid material."));
+            return;
+        }
         if (!plugin.collectionRegistry().addSource(args[2], type, key)) {
             sender.sendMessage(color("&cCould not add that source."));
             return;
@@ -315,8 +324,13 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             sender.sendMessage(color("&cUsage: /rc reward add-command <collection> <tier> <console|player> <command>"));
             return;
         }
+        String senderType = args[4].toUpperCase(Locale.ROOT);
+        if (!senderType.equals("CONSOLE") && !senderType.equals("PLAYER")) {
+            sender.sendMessage(color("&cReward sender must be console or player."));
+            return;
+        }
         String command = String.join(" ", Arrays.copyOfRange(args, 5, args.length));
-        if (!plugin.collectionRegistry().addCommandReward(args[2], args[3], args[4], command)) {
+        if (!plugin.collectionRegistry().addCommandReward(args[2], args[3], senderType, command)) {
             sender.sendMessage(color("&cCould not add that reward."));
             return;
         }
@@ -377,13 +391,18 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
 
     private void require(CommandSender sender, String permission) {
         if (!sender.hasPermission(permission) && !sender.hasPermission("ruinedcollections.admin")) {
-            throw new NoPermission(sender);
+            sender.sendMessage(color(plugin.getConfig().getString("messages.no-permission", "&cYou do not have permission.")));
+            throw new NoPermission();
         }
     }
 
     private File dataFile(String name) {
         File exports = new File(plugin.getDataFolder(), "exports");
-        return new File(exports, name.endsWith(".yml") ? name : name + ".yml");
+        String cleanName = new File(name.replace('\\', '/')).getName();
+        if (cleanName.isBlank()) {
+            cleanName = "backup.yml";
+        }
+        return new File(exports, cleanName.endsWith(".yml") || cleanName.endsWith(".yaml") ? cleanName : cleanName + ".yml");
     }
 
     private Long parseZeroOrPositive(String input) {
@@ -620,6 +639,14 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         }
     }
 
+    private EntityType entityType(String input) {
+        try {
+            return EntityType.valueOf(input.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
     private List<String> exportFiles() {
         File folder = new File(plugin.getDataFolder(), "exports");
         File[] files = folder.listFiles((dir, name) -> name.endsWith(".yml") || name.endsWith(".yaml"));
@@ -641,8 +668,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
     }
 
     private static final class NoPermission extends RuntimeException {
-        private NoPermission(CommandSender sender) {
-            sender.sendMessage(Text.color("&cYou do not have permission."));
+        private NoPermission() {
         }
     }
 }

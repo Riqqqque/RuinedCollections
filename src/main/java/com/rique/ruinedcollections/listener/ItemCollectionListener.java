@@ -29,7 +29,12 @@ public final class ItemCollectionListener implements Listener {
         if (!(event.getEntity() instanceof Player player) || filter.blocked(player)) {
             return;
         }
-        ItemStack item = event.getItem().getItemStack();
+        ItemStack item = event.getItem().getItemStack().clone();
+        int pickedUp = item.getAmount() - event.getRemaining();
+        if (pickedUp <= 0) {
+            return;
+        }
+        item.setAmount(pickedUp);
         for (ProgressMatch match : plugin.collectionRegistry().matchItemPickup(item)) {
             plugin.progressService().addProgress(player, match.collection(), match.amount());
         }

@@ -35,10 +35,20 @@ public final class RewardService {
                     return;
                 }
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    session.finishClaim(collection.id(), tier.id());
-                    if (Boolean.TRUE.equals(inserted) && player.isOnline()) {
-                        execute(player, collection, tier);
+                    if (!Boolean.TRUE.equals(inserted)) {
+                        session.finishClaim(collection.id(), tier.id());
+                        return;
                     }
+                    if (!player.isOnline()) {
+                        session.cancelClaim(collection.id(), tier.id());
+                        plugin.repository().unclaimTier(player.getUniqueId(), collection.id(), tier.id()).exceptionally(exception -> {
+                            plugin.getLogger().log(Level.SEVERE, "Could not restore tier claim for offline player " + player.getName(), exception);
+                            return null;
+                        });
+                        return;
+                    }
+                    session.finishClaim(collection.id(), tier.id());
+                    execute(player, collection, tier);
                 });
             });
         }
@@ -55,13 +65,13 @@ public final class RewardService {
 
         String unlocked = plugin.getConfig().getString("messages.tier-unlocked", "");
         if (!unlocked.isBlank()) {
-            player.sendMessage(Text.color(plugin.messagePrefix() + Text.placeholders(unlocked, placeholders)));
+            player.sendMessage(Text.component(plugin.messagePrefix() + Text.placeholders(unlocked, placeholders)));
         }
 
         for (RewardAction reward : tier.rewards()) {
             switch (reward.type()) {
-                case MESSAGE -> player.sendMessage(Text.color(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
-                case BROADCAST -> Bukkit.broadcastMessage(Text.color(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
+                case MESSAGE -> player.sendMessage(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
+                case BROADCAST -> Bukkit.broadcast(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
                 case COMMAND -> runCommand(player, reward, placeholders);
                 case ECONOMY -> {
                     if (reward.amount() > 0 && !plugin.hooks().economy().deposit(player, reward.amount())) {
