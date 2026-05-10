@@ -80,7 +80,7 @@ public final class RuinedCollectionsExpansion extends PlaceholderExpansion {
             if (next <= 0) {
                 return "100";
             }
-            return String.valueOf(Math.min(100, (progress * 100) / next));
+            return String.valueOf((long) Math.min(100D, (progress * 100D) / next));
         }
         if (params.startsWith("tier_")) {
             String id = params.substring("tier_".length());

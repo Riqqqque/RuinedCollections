@@ -20,7 +20,7 @@ public final class BlockCollectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
-        if (!plugin.getConfig().getBoolean("tracking.ignore-player-placed-blocks", true)) {
+        if (!filter.ignorePlayerPlacedBlocks()) {
             return;
         }
         if (filter.blockedWorld(event.getBlockPlaced().getWorld())) {
@@ -33,7 +33,7 @@ public final class BlockCollectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
-        boolean playerPlaced = plugin.getConfig().getBoolean("tracking.ignore-player-placed-blocks", true)
+        boolean playerPlaced = filter.ignorePlayerPlacedBlocks()
                 && plugin.placedBlocks().consume(event.getBlock());
         if (filter.blocked(event.getPlayer())) {
             return;

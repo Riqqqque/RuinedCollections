@@ -40,7 +40,7 @@ storage:
     pool-size: 10
 ```
 
-Use a unique `table-prefix` if multiple plugins or test servers share one database.
+Use a unique `table-prefix` if multiple plugins or test servers share one database. Prefixes may use lowercase letters, numbers, and underscores.
 
 ## Progress Saving
 
@@ -53,7 +53,7 @@ progress:
 
 Progress is cached in memory and flushed in batches. Lower flush intervals write more often. Higher intervals write less often but keep more unsaved progress in memory between flushes.
 
-The plugin always flushes pending progress on shutdown.
+The plugin flushes the quitting player's pending progress when `save-on-quit` is enabled and always flushes all pending progress on shutdown.
 
 ## Diagnostics
 

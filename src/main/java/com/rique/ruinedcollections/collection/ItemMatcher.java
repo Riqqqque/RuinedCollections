@@ -7,6 +7,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.List;
 
 public record ItemMatcher(Integer customModelData, String displayName, List<PersistentDataRule> persistentDataRules) {
+    @SuppressWarnings("deprecation")
     public boolean matches(ItemStack item) {
         if (item == null || item.getType().isAir()) {
             return false;

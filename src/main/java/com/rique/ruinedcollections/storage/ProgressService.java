@@ -49,6 +49,7 @@ public final class ProgressService {
             flushTask.cancel();
         }
         flushSync();
+        flushWaitingSync();
         sessions.clear();
         waitingForLoad.clear();
     }
@@ -67,6 +68,7 @@ public final class ProgressService {
                         "player", playerName,
                         "uuid", playerId
                 ), throwable);
+                flushWaitingAsync(playerId, playerName);
                 return;
             }
             plugin.scheduler().runPlayer(player, () -> {
@@ -87,7 +89,8 @@ public final class ProgressService {
 
     public void unload(Player player) {
         if (plugin.getConfig().getBoolean("progress.save-on-quit", true)) {
-            flushAsync();
+            flushPendingAsync(player.getUniqueId(), player.getName());
+            flushWaitingAsync(player.getUniqueId(), player.getName());
         }
         sessions.remove(player.getUniqueId());
         loading.remove(player.getUniqueId());
@@ -100,7 +103,11 @@ public final class ProgressService {
     }
 
     public void addProgress(Player player, CollectionDefinition collection, long amount) {
-        if (amount <= 0 || !collection.enabled()) {
+        addProgress(player, collection, amount, true);
+    }
+
+    private void addProgress(Player player, CollectionDefinition collection, long amount, boolean trackedSource) {
+        if (amount <= 0 || (trackedSource && !collection.enabled())) {
             return;
         }
         UUID playerId = player.getUniqueId();
@@ -112,7 +119,9 @@ public final class ProgressService {
         }
         long progress = session.addProgress(collection.id(), amount);
         addQueued(pendingFlush, new ProgressKey(playerId, collection.id()), amount);
-        rewardService.check(player, collection, progress, session);
+        if (collection.enabled()) {
+            rewardService.check(player, collection, progress, session);
+        }
     }
 
     public void addManual(UUID playerId, String collectionId, long amount) {
@@ -120,7 +129,7 @@ public final class ProgressService {
             Player player = Bukkit.getPlayer(playerId);
             CollectionDefinition collection = plugin.collectionRegistry().get(collectionId).orElse(null);
             if (player != null && collection != null) {
-                plugin.scheduler().runPlayer(player, () -> addProgress(player, collection, amount));
+                plugin.scheduler().runPlayer(player, () -> addProgress(player, collection, amount, false));
                 return;
             }
             repository.addProgressBatch(Map.of(new ProgressKey(playerId, collectionId), amount))
@@ -141,14 +150,23 @@ public final class ProgressService {
 
     public void setProgress(UUID playerId, String collectionId, long amount) {
         ProgressKey key = new ProgressKey(playerId, collectionId);
-        pendingFlush.remove(key);
-        waitingForLoad.remove(key);
+        AtomicLong removedPending = pendingFlush.remove(key);
+        AtomicLong removedWaiting = waitingForLoad.remove(key);
+        long removedPendingAmount = removedPending == null ? 0 : Math.max(0, removedPending.get());
+        long removedWaitingAmount = removedWaiting == null ? 0 : Math.max(0, removedWaiting.get());
         PlayerProgressSession session = sessions.get(playerId);
+        Long previous = session == null ? null : session.progress(collectionId);
         if (session != null) {
             session.setProgress(collectionId, amount);
         }
         repository.setProgress(playerId, collectionId, amount).whenComplete((ignored, throwable) -> {
             if (throwable != null) {
+                PlayerProgressSession liveSession = sessions.get(playerId);
+                if (previous != null && liveSession != null && liveSession.progress(collectionId) == amount) {
+                    liveSession.setProgress(collectionId, previous);
+                }
+                addQueued(pendingFlush, key, removedPendingAmount);
+                addQueued(waitingForLoad, key, removedWaitingAmount);
                 plugin.diagnostics().error("progress", "Could not set collection progress", DiagnosticService.fields(
                         "uuid", playerId,
                         "collection", collectionId,
@@ -160,7 +178,7 @@ public final class ProgressService {
                 Player player = Bukkit.getPlayer(playerId);
                 CollectionDefinition collection = plugin.collectionRegistry().get(collectionId).orElse(null);
                 PlayerProgressSession liveSession = sessions.get(playerId);
-                if (player != null && collection != null && liveSession != null) {
+                if (player != null && collection != null && collection.enabled() && liveSession != null) {
                     plugin.scheduler().runPlayer(player, () -> rewardService.check(player, collection, amount, liveSession));
                 }
                 plugin.leaderboards().invalidate(playerId, collectionId);
@@ -230,8 +248,11 @@ public final class ProgressService {
             if (!entry.getKey().playerId().equals(playerId)) {
                 continue;
             }
-            long amount = Math.max(0, entry.getValue().getAndSet(0));
-            waitingForLoad.remove(entry.getKey());
+            AtomicLong counter = waitingForLoad.remove(entry.getKey());
+            if (counter == null) {
+                continue;
+            }
+            long amount = Math.max(0, counter.getAndSet(0));
             if (amount <= 0) {
                 continue;
             }
@@ -241,16 +262,29 @@ public final class ProgressService {
             }
             long progress = session.addProgress(collection.id(), amount);
             addQueued(pendingFlush, entry.getKey(), amount);
-            rewardService.check(player, collection, progress, session);
+            if (collection.enabled()) {
+                rewardService.check(player, collection, progress, session);
+            }
         }
     }
 
     private Map<ProgressKey, Long> drainPending() {
+        return drainPending(null);
+    }
+
+    private Map<ProgressKey, Long> drainPending(UUID playerId) {
         Map<ProgressKey, Long> batch = new HashMap<>();
         for (Map.Entry<ProgressKey, AtomicLong> entry : pendingFlush.entrySet()) {
-            long amount = entry.getValue().getAndSet(0);
+            if (playerId != null && !entry.getKey().playerId().equals(playerId)) {
+                continue;
+            }
+            AtomicLong counter = pendingFlush.remove(entry.getKey());
+            if (counter == null) {
+                continue;
+            }
+            long amount = counter.getAndSet(0);
             if (amount > 0) {
-                batch.put(entry.getKey(), amount);
+                add(batch, entry.getKey(), amount);
             }
         }
         return batch;
@@ -259,6 +293,87 @@ public final class ProgressService {
     private void restorePending(Map<ProgressKey, Long> batch) {
         for (Map.Entry<ProgressKey, Long> entry : batch.entrySet()) {
             addQueued(pendingFlush, entry.getKey(), entry.getValue());
+        }
+    }
+
+    private void flushPendingAsync(UUID playerId, String playerName) {
+        Map<ProgressKey, Long> batch = drainPending(playerId);
+        if (batch.isEmpty()) {
+            return;
+        }
+        repository.addProgressBatch(batch).exceptionally(throwable -> {
+            plugin.diagnostics().error("progress", "Could not save pending progress for unloaded player", DiagnosticService.fields(
+                    "player", playerName,
+                    "uuid", playerId,
+                    "rows", batch.size()
+            ), throwable);
+            restorePending(batch);
+            return null;
+        });
+    }
+
+    private void flushWaitingAsync(UUID playerId, String playerName) {
+        Map<ProgressKey, Long> batch = drainWaiting(playerId);
+        if (batch.isEmpty()) {
+            return;
+        }
+        repository.addProgressBatch(batch).whenComplete((ignored, throwable) -> {
+            if (throwable != null) {
+                plugin.diagnostics().error("progress", "Could not save queued progress for unloaded player", DiagnosticService.fields(
+                        "player", playerName,
+                        "uuid", playerId,
+                        "rows", batch.size()
+                ), throwable);
+                restoreWaiting(batch);
+                return;
+            }
+            for (ProgressKey key : batch.keySet()) {
+                plugin.leaderboards().invalidate(key.playerId(), key.collectionId());
+                plugin.leaderboards().refreshCollection(key.collectionId());
+            }
+            plugin.scheduler().runGlobal(() -> {
+                Player online = Bukkit.getPlayer(playerId);
+                if (online != null && online.isOnline()) {
+                    plugin.scheduler().runPlayer(online, () -> refresh(online));
+                }
+            });
+        });
+    }
+
+    private void flushWaitingSync() {
+        Map<ProgressKey, Long> batch = drainWaiting(null);
+        if (batch.isEmpty()) {
+            return;
+        }
+        try {
+            repository.addProgressBatchSync(batch);
+        } catch (SQLException exception) {
+            plugin.diagnostics().error("progress", "Could not save queued progress during shutdown", DiagnosticService.fields("rows", batch.size()), exception);
+            restoreWaiting(batch);
+        }
+    }
+
+    private Map<ProgressKey, Long> drainWaiting(UUID playerId) {
+        Map<ProgressKey, Long> batch = new HashMap<>();
+        for (Map.Entry<ProgressKey, AtomicLong> entry : waitingForLoad.entrySet()) {
+            if (playerId != null && !entry.getKey().playerId().equals(playerId)) {
+                continue;
+            }
+            AtomicLong counter = waitingForLoad.remove(entry.getKey());
+            if (counter == null) {
+                continue;
+            }
+            long amount = counter.getAndSet(0);
+            if (amount > 0) {
+                add(batch, entry.getKey(), amount);
+            }
+        }
+        return batch;
+    }
+
+    private void restoreWaiting(Map<ProgressKey, Long> batch) {
+        for (Map.Entry<ProgressKey, Long> entry : batch.entrySet()) {
+            addQueued(waitingForLoad, entry.getKey(), entry.getValue());
         }
     }
 
@@ -278,5 +393,9 @@ public final class ProgressService {
         }
         queue.computeIfAbsent(key, ignored -> new AtomicLong())
                 .updateAndGet(current -> Longs.addClamped(current, amount));
+    }
+
+    private void add(Map<ProgressKey, Long> batch, ProgressKey key, long amount) {
+        batch.merge(key, amount, Longs::addClamped);
     }
 }

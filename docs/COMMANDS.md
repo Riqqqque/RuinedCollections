@@ -54,7 +54,7 @@ ruinedcollections.menu
 /rc reload
 ```
 
-Reloads config, collection files, and menus. It also re-checks online players for newly qualified rewards.
+Reloads config, collection files, menus, tracking filters, and leaderboards. It also reports newly loaded collections and re-checks online players for newly qualified rewards.
 
 Permission:
 
@@ -138,6 +138,8 @@ Example:
 
 This creates a new collection file with starter tiers and a block break source.
 
+Collection ids must be 1-64 lowercase letters, numbers, underscores, or hyphens.
+
 ### Delete Collection
 
 ```text
@@ -163,6 +165,8 @@ Example:
 ```text
 /rc tier add oak_log IV 1000
 ```
+
+Tier ids must be 1-64 letters, numbers, underscores, or hyphens. New goals must be higher than the current highest goal in that collection.
 
 ### Add Source
 
