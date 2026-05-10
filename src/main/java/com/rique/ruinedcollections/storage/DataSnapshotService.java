@@ -1,8 +1,9 @@
 package com.rique.ruinedcollections.storage;
 
+import com.rique.ruinedcollections.RuinedCollectionsPlugin;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
@@ -13,10 +14,10 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 public final class DataSnapshotService {
-    private final JavaPlugin plugin;
+    private final RuinedCollectionsPlugin plugin;
     private final CollectionRepository repository;
 
-    public DataSnapshotService(JavaPlugin plugin, CollectionRepository repository) {
+    public DataSnapshotService(RuinedCollectionsPlugin plugin, CollectionRepository repository) {
         this.plugin = plugin;
         this.repository = repository;
     }
@@ -44,6 +45,11 @@ public final class DataSnapshotService {
                     throw new IOException("Could not create " + parent.getAbsolutePath());
                 }
                 config.save(file);
+                plugin.diagnostics().info("export", "Exported collection data", DiagnosticService.fields(
+                        "file", file.getAbsolutePath(),
+                        "progressRows", progress.size(),
+                        "claimedRows", claimed.size()
+                ));
                 return file;
             } catch (IOException exception) {
                 throw new CollectionRepository.StorageException(exception);
@@ -64,7 +70,7 @@ public final class DataSnapshotService {
             try {
                 playerId = UUID.fromString(uuidText);
             } catch (IllegalArgumentException ignored) {
-                plugin.getLogger().warning("Skipped invalid UUID in import: " + uuidText);
+                plugin.diagnostics().warn("import", "Skipped invalid UUID in import", DiagnosticService.fields("uuid", uuidText));
                 continue;
             }
             ConfigurationSection collections = players.getConfigurationSection(uuidText + ".collections");
@@ -83,6 +89,10 @@ public final class DataSnapshotService {
     }
 
     public CompletableFuture<Void> apply(ImportPreview preview) {
+        plugin.diagnostics().info("import", "Applying import snapshot", DiagnosticService.fields(
+                "progressRows", preview.progressRows().size(),
+                "claimedRows", preview.claimedRows().size()
+        ));
         return repository.applySnapshot(preview.progressRows(), preview.claimedRows());
     }
 }

@@ -18,6 +18,21 @@ progress:
   load-on-join: true
   save-on-quit: true
 
+diagnostics:
+  # Writes detailed plugin diagnostics to plugins/RuinedCollections/logs/diagnostics.log.
+  enabled: true
+  file: logs/diagnostics.log
+  mirror-warnings-to-console: true
+  include-stack-traces: true
+  max-file-size-mb: 8
+  max-archives: 5
+  debug:
+    # Leave these off unless you are actively debugging. Tracking can be noisy on busy servers.
+    tracking-skips: false
+    progress: false
+    rewards: false
+    commands: false
+
 tracking:
   ignore-creative: true
   ignore-spectator: true

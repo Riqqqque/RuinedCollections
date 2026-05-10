@@ -33,6 +33,9 @@ permissions:
   ruinedcollections.admin.import:
     description: Import collection data.
     default: op
+  ruinedcollections.admin.diagnostics:
+    description: View diagnostics status and recent diagnostic log lines.
+    default: op
   ruinedcollections.menu:
     description: Open the collections menu.
     default: true

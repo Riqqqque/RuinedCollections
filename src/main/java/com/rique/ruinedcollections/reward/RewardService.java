@@ -3,6 +3,7 @@ package com.rique.ruinedcollections.reward;
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.CollectionDefinition;
 import com.rique.ruinedcollections.collection.CollectionTier;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.storage.PlayerProgressSession;
 import com.rique.ruinedcollections.util.Longs;
 import com.rique.ruinedcollections.util.Text;
@@ -11,7 +12,6 @@ import org.bukkit.entity.Player;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
 
 public final class RewardService {
     private final RuinedCollectionsPlugin plugin;
@@ -26,23 +26,51 @@ public final class RewardService {
                 continue;
             }
             if (!session.startClaim(collection.id(), tier.id())) {
+                plugin.diagnostics().debug("rewards", "Skipped reward claim because tier is already claiming", DiagnosticService.fields(
+                        "player", player.getName(),
+                        "uuid", player.getUniqueId(),
+                        "collection", collection.id(),
+                        "tier", tier.id()
+                ));
                 continue;
             }
             plugin.repository().claimTier(player.getUniqueId(), collection.id(), tier.id()).whenComplete((inserted, throwable) -> {
                 if (throwable != null) {
                     session.cancelClaim(collection.id(), tier.id());
-                    plugin.getLogger().log(Level.SEVERE, "Could not mark tier as claimed for " + player.getName(), throwable);
+                    plugin.diagnostics().error("rewards", "Could not mark tier as claimed", DiagnosticService.fields(
+                            "player", player.getName(),
+                            "uuid", player.getUniqueId(),
+                            "collection", collection.id(),
+                            "tier", tier.id()
+                    ), throwable);
                     return;
                 }
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!Boolean.TRUE.equals(inserted)) {
                         session.finishClaim(collection.id(), tier.id());
+                        plugin.diagnostics().debug("rewards", "Skipped reward execution because tier was already claimed in storage", DiagnosticService.fields(
+                                "player", player.getName(),
+                                "uuid", player.getUniqueId(),
+                                "collection", collection.id(),
+                                "tier", tier.id()
+                        ));
                         return;
                     }
                     if (!player.isOnline()) {
                         session.cancelClaim(collection.id(), tier.id());
+                        plugin.diagnostics().warn("rewards", "Player left before reward execution; restored claim for retry", DiagnosticService.fields(
+                                "player", player.getName(),
+                                "uuid", player.getUniqueId(),
+                                "collection", collection.id(),
+                                "tier", tier.id()
+                        ));
                         plugin.repository().unclaimTier(player.getUniqueId(), collection.id(), tier.id()).exceptionally(exception -> {
-                            plugin.getLogger().log(Level.SEVERE, "Could not restore tier claim for offline player " + player.getName(), exception);
+                            plugin.diagnostics().error("rewards", "Could not restore tier claim for offline player", DiagnosticService.fields(
+                                    "player", player.getName(),
+                                    "uuid", player.getUniqueId(),
+                                    "collection", collection.id(),
+                                    "tier", tier.id()
+                            ), exception);
                             return null;
                         });
                         return;
@@ -75,7 +103,13 @@ public final class RewardService {
                 case COMMAND -> runCommand(player, reward, placeholders);
                 case ECONOMY -> {
                     if (reward.amount() > 0 && !plugin.hooks().economy().deposit(player, reward.amount())) {
-                        plugin.getLogger().warning("Economy reward failed for " + player.getName() + " in " + collection.id() + " " + tier.id());
+                        plugin.diagnostics().warn("rewards", "Economy reward failed", DiagnosticService.fields(
+                                "player", player.getName(),
+                                "uuid", player.getUniqueId(),
+                                "collection", collection.id(),
+                                "tier", tier.id(),
+                                "amount", reward.amount()
+                        ));
                     }
                 }
             }
@@ -87,10 +121,27 @@ public final class RewardService {
         if (command.startsWith("/")) {
             command = command.substring(1);
         }
-        if ("PLAYER".equalsIgnoreCase(reward.sender())) {
-            Bukkit.dispatchCommand(player, command);
+        if (command.isBlank()) {
+            plugin.diagnostics().warn("rewards", "Skipped empty command reward", DiagnosticService.fields(
+                    "player", player.getName(),
+                    "uuid", player.getUniqueId(),
+                    "sender", reward.sender()
+            ));
             return;
         }
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+        boolean dispatched;
+        if ("PLAYER".equalsIgnoreCase(reward.sender())) {
+            dispatched = Bukkit.dispatchCommand(player, command);
+        } else {
+            dispatched = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+        }
+        if (!dispatched) {
+            plugin.diagnostics().warn("rewards", "Reward command was not handled", DiagnosticService.fields(
+                    "player", player.getName(),
+                    "uuid", player.getUniqueId(),
+                    "sender", reward.sender(),
+                    "command", command
+            ));
+        }
     }
 }

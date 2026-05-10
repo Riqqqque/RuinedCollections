@@ -3,6 +3,7 @@ package com.rique.ruinedcollections.command;
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.CollectionDefinition;
 import com.rique.ruinedcollections.collection.CollectionSourceType;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.storage.ImportPreview;
 import com.rique.ruinedcollections.util.Longs;
 import com.rique.ruinedcollections.util.Text;
@@ -60,11 +61,16 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
                 case "reward" -> reward(sender, args);
                 case "export" -> export(sender, args);
                 case "import" -> importData(sender, args);
+                case "diagnostics" -> diagnostics(sender, args);
                 default -> help(sender);
             }
         } catch (NoPermission ignored) {
             return true;
         } catch (IOException exception) {
+            plugin.diagnostics().error("commands", "File change failed", DiagnosticService.fields(
+                    "sender", sender.getName(),
+                    "subcommand", sub
+            ), exception);
             sender.sendMessage(color("&cFile change failed: " + exception.getMessage()));
         }
         return true;
@@ -87,6 +93,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         sender.sendMessage(color("&e/rc reward add-command <collection> <tier> <console|player> <command> &7- add command reward"));
         sender.sendMessage(color("&e/rc export <file> &7- export data"));
         sender.sendMessage(color("&e/rc import <file> [--apply] &7- preview or apply data"));
+        sender.sendMessage(color("&e/rc diagnostics [tail|path] &7- view diagnostics"));
     }
 
     private void reload(CommandSender sender) {
@@ -238,11 +245,18 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         require(sender, "ruinedcollections.admin.modify");
         if (args.length < 3) {
             sender.sendMessage(color("&cUsage: /rc create <id> <material> [display name]"));
+            plugin.diagnostics().debug("commands", "Create collection rejected", DiagnosticService.fields("sender", sender.getName(), "reason", "usage"));
             return;
         }
         Material material = Material.matchMaterial(args[2]);
         if (material == null || material.isAir()) {
             sender.sendMessage(color("&cInvalid material."));
+            plugin.diagnostics().debug("commands", "Create collection rejected", DiagnosticService.fields(
+                    "sender", sender.getName(),
+                    "collection", args[1],
+                    "material", args[2],
+                    "reason", "invalid_material"
+            ));
             return;
         }
         String displayName = args.length >= 4 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : args[1];
@@ -349,6 +363,10 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         plugin.snapshots().exportData(file).whenComplete((result, throwable) ->
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (throwable != null) {
+                        plugin.diagnostics().error("export", "Export failed", DiagnosticService.fields(
+                                "sender", sender.getName(),
+                                "file", file.getAbsolutePath()
+                        ), throwable);
                         sender.sendMessage(color("&cExport failed: " + throwable.getMessage()));
                         return;
                     }
@@ -360,11 +378,16 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         require(sender, "ruinedcollections.admin.import");
         if (args.length < 2) {
             sender.sendMessage(color("&cUsage: /rc import <file> [--apply]"));
+            plugin.diagnostics().debug("commands", "Import rejected", DiagnosticService.fields("sender", sender.getName(), "reason", "usage"));
             return;
         }
         File file = dataFile(args[1]);
         if (!file.exists()) {
             sender.sendMessage(color("&cThat file does not exist."));
+            plugin.diagnostics().warn("import", "Import file was missing", DiagnosticService.fields(
+                    "sender", sender.getName(),
+                    "file", file.getAbsolutePath()
+            ));
             return;
         }
         ImportPreview preview = plugin.snapshots().preview(file);
@@ -377,6 +400,12 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         plugin.snapshots().apply(preview).whenComplete((ignored, throwable) ->
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (throwable != null) {
+                        plugin.diagnostics().error("import", "Import failed", DiagnosticService.fields(
+                                "sender", sender.getName(),
+                                "file", file.getAbsolutePath(),
+                                "progressRows", preview.progressRows().size(),
+                                "claimedRows", preview.claimedRows().size()
+                        ), throwable);
                         sender.sendMessage(color("&cImport failed: " + throwable.getMessage()));
                         return;
                     }
@@ -387,6 +416,31 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
                             .forEach(player -> plugin.progressService().refresh(player));
                     sender.sendMessage(color("&aImported data."));
                 }));
+    }
+
+    private void diagnostics(CommandSender sender, String[] args) {
+        require(sender, "ruinedcollections.admin.diagnostics");
+        if (args.length >= 2 && "tail".equalsIgnoreCase(args[1])) {
+            Long requestedLines = args.length >= 3 ? parseZeroOrPositive(args[2]) : null;
+            int lines = requestedLines == null ? 10 : Math.max(1, Math.min(requestedLines.intValue(), 50));
+            sender.sendMessage(color("&6Last " + lines + " diagnostics line(s):"));
+            for (String line : plugin.diagnostics().tail(lines)) {
+                sender.sendMessage(Text.color("&7" + line));
+            }
+            return;
+        }
+        if (args.length >= 2 && "path".equalsIgnoreCase(args[1])) {
+            sender.sendMessage(color("&7Diagnostics file: &f" + plugin.diagnostics().logPath()));
+            return;
+        }
+        sender.sendMessage(color("&6RuinedCollections diagnostics:"));
+        sender.sendMessage(color("&7Enabled: &f" + plugin.diagnostics().enabled()));
+        sender.sendMessage(color("&7File: &f" + plugin.diagnostics().logPath()));
+        sender.sendMessage(color("&7Size: &f" + plugin.diagnostics().logSizeBytes() + " bytes"));
+        sender.sendMessage(color("&7Debug: &ftracking=" + plugin.diagnostics().debugTrackingSkips()
+                + " progress=" + plugin.diagnostics().debugProgress()
+                + " rewards=" + plugin.diagnostics().debugRewards()
+                + " commands=" + plugin.diagnostics().debugCommands()));
     }
 
     private void require(CommandSender sender, String permission) {
@@ -449,6 +503,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             case "reward" -> completeReward(args);
             case "export" -> completeExport(args);
             case "import" -> completeImport(args);
+            case "diagnostics" -> completeDiagnostics(args);
             default -> List.of();
         };
     }
@@ -591,6 +646,16 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         return List.of();
     }
 
+    private List<String> completeDiagnostics(String[] args) {
+        if (args.length == 2) {
+            return filter(args[1], List.of("tail", "path"));
+        }
+        if (args.length == 3 && "tail".equalsIgnoreCase(args[1])) {
+            return filter(args[2], List.of("10", "25", "50"));
+        }
+        return List.of();
+    }
+
     private List<String> completeCollection(String[] args, int index) {
         return args.length == index ? filter(args[index - 1], collectionIds()) : List.of();
     }
@@ -606,7 +671,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
     }
 
     private List<String> subcommands() {
-        return List.of("help", "reload", "validate", "list", "info", "open", "add", "set", "reset", "create", "delete", "tier", "source", "reward", "export", "import");
+        return List.of("help", "reload", "validate", "list", "info", "open", "add", "set", "reset", "create", "delete", "tier", "source", "reward", "export", "import", "diagnostics");
     }
 
     private List<String> playerTargets() {

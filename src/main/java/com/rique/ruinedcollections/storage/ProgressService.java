@@ -2,6 +2,7 @@ package com.rique.ruinedcollections.storage;
 
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.CollectionDefinition;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.reward.RewardService;
 import com.rique.ruinedcollections.util.Longs;
 import org.bukkit.Bukkit;
@@ -14,7 +15,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.logging.Level;
 
 public final class ProgressService {
     private final RuinedCollectionsPlugin plugin;
@@ -59,11 +59,18 @@ public final class ProgressService {
         repository.loadPlayer(playerId).whenComplete((data, throwable) -> {
             loading.remove(playerId);
             if (throwable != null) {
-                plugin.getLogger().log(Level.SEVERE, "Could not load collection data for " + player.getName(), throwable);
+                plugin.diagnostics().error("progress", "Could not load player collection data", DiagnosticService.fields(
+                        "player", player.getName(),
+                        "uuid", playerId
+                ), throwable);
                 return;
             }
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) {
+                    plugin.diagnostics().debug("progress", "Skipped applying loaded data because player left", DiagnosticService.fields(
+                            "player", player.getName(),
+                            "uuid", playerId
+                    ));
                     return;
                 }
                 PlayerProgressSession session = new PlayerProgressSession(data);
@@ -113,7 +120,11 @@ public final class ProgressService {
         }
         repository.addProgressBatch(Map.of(new ProgressKey(playerId, collectionId), amount))
                 .exceptionally(throwable -> {
-                    plugin.getLogger().log(Level.SEVERE, "Could not add manual progress.", throwable);
+                    plugin.diagnostics().error("progress", "Could not add manual progress", DiagnosticService.fields(
+                            "uuid", playerId,
+                            "collection", collectionId,
+                            "amount", amount
+                    ), throwable);
                     return null;
                 });
     }
@@ -128,7 +139,11 @@ public final class ProgressService {
         }
         repository.setProgress(playerId, collectionId, amount).whenComplete((ignored, throwable) -> {
             if (throwable != null) {
-                plugin.getLogger().log(Level.SEVERE, "Could not set collection progress.", throwable);
+                plugin.diagnostics().error("progress", "Could not set collection progress", DiagnosticService.fields(
+                        "uuid", playerId,
+                        "collection", collectionId,
+                        "amount", amount
+                ), throwable);
                 return;
             }
             Player player = Bukkit.getPlayer(playerId);
@@ -172,7 +187,7 @@ public final class ProgressService {
             return;
         }
         repository.addProgressBatch(batch).exceptionally(throwable -> {
-            plugin.getLogger().log(Level.SEVERE, "Could not save collection progress.", throwable);
+            plugin.diagnostics().error("progress", "Could not save collection progress batch", DiagnosticService.fields("rows", batch.size()), throwable);
             restorePending(batch);
             return null;
         });
@@ -186,7 +201,7 @@ public final class ProgressService {
         try {
             repository.addProgressBatchSync(batch);
         } catch (SQLException exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save collection progress.", exception);
+            plugin.diagnostics().error("progress", "Could not save collection progress batch during shutdown", DiagnosticService.fields("rows", batch.size()), exception);
             restorePending(batch);
         }
     }

@@ -1,5 +1,7 @@
 package com.rique.ruinedcollections.collection;
 
+import com.rique.ruinedcollections.RuinedCollectionsPlugin;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.reward.RewardAction;
 import com.rique.ruinedcollections.reward.RewardType;
 import com.rique.ruinedcollections.util.Longs;
@@ -8,7 +10,6 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,7 +29,7 @@ import java.util.Set;
 public final class CollectionRegistry {
     private static final String ID_PATTERN = "[a-z0-9_-]+";
 
-    private final JavaPlugin plugin;
+    private final RuinedCollectionsPlugin plugin;
     private final File collectionsFolder;
     private final Map<String, CollectionDefinition> collections = new LinkedHashMap<>();
     private final Map<String, File> filesById = new HashMap<>();
@@ -44,7 +45,7 @@ public final class CollectionRegistry {
     private final Map<Material, List<TrackedSource>> fish = new HashMap<>();
     private final List<TrackedSource> fishAny = new ArrayList<>();
 
-    public CollectionRegistry(JavaPlugin plugin) {
+    public CollectionRegistry(RuinedCollectionsPlugin plugin) {
         this.plugin = plugin;
         this.collectionsFolder = new File(plugin.getDataFolder(), "collections");
     }
@@ -82,7 +83,7 @@ public final class CollectionRegistry {
         buildIndexes();
         validateMenuSlots(issues);
         for (String issue : issues) {
-            plugin.getLogger().warning(issue);
+            plugin.diagnostics().warn("collections", issue);
         }
         return issues;
     }
@@ -140,6 +141,10 @@ public final class CollectionRegistry {
     public boolean createCollection(String id, Material material, String displayName) throws IOException {
         String normalized = normalizeId(id);
         if (!normalized.matches(ID_PATTERN) || collections.containsKey(normalized)) {
+            plugin.diagnostics().debug("commands", "Create collection rejected", DiagnosticService.fields(
+                    "collection", normalized,
+                    "reason", collections.containsKey(normalized) ? "duplicate" : "invalid_id"
+            ));
             return false;
         }
         File file = new File(collectionsFolder, normalized + ".yml");
@@ -162,6 +167,7 @@ public final class CollectionRegistry {
     public boolean deleteCollection(String id) throws IOException {
         File file = fileFor(id);
         if (file == null || !file.exists()) {
+            plugin.diagnostics().debug("commands", "Delete collection rejected", DiagnosticService.fields("collection", id, "reason", "unknown_collection"));
             return false;
         }
         File deletedFolder = new File(collectionsFolder, "deleted");
