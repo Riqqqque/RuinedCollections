@@ -13,6 +13,8 @@ import com.rique.ruinedcollections.listener.PlayerConnectionListener;
 import com.rique.ruinedcollections.listener.TrackingFilter;
 import com.rique.ruinedcollections.menu.MenuService;
 import com.rique.ruinedcollections.reward.RewardService;
+import com.rique.ruinedcollections.scheduler.SchedulerAdapter;
+import com.rique.ruinedcollections.scheduler.SchedulerFactory;
 import com.rique.ruinedcollections.storage.CollectionRepository;
 import com.rique.ruinedcollections.storage.DataSnapshotService;
 import com.rique.ruinedcollections.storage.DatabaseManager;
@@ -36,10 +38,12 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
     private DataSnapshotService snapshots;
     private DiagnosticService diagnostics;
     private LeaderboardService leaderboards;
+    private SchedulerAdapter scheduler;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        scheduler = SchedulerFactory.create(this);
         diagnostics = new DiagnosticService(this);
         diagnostics.load();
         diagnostics.info("startup", "Plugin enable started", DiagnosticService.fields("version", getPluginMeta().getVersion()));
@@ -89,6 +93,9 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         }
         if (leaderboards != null) {
             leaderboards.stop();
+        }
+        if (scheduler != null) {
+            scheduler.shutdown();
         }
         if (repository != null) {
             repository.close();
@@ -155,6 +162,10 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
 
     public DiagnosticService diagnostics() {
         return diagnostics;
+    }
+
+    public SchedulerAdapter scheduler() {
+        return scheduler;
     }
 
     public String messagePrefix() {

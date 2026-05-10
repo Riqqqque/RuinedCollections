@@ -3,11 +3,9 @@ package com.rique.ruinedcollections.leaderboard;
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.CollectionDefinition;
 import com.rique.ruinedcollections.diagnostics.DiagnosticService;
+import com.rique.ruinedcollections.scheduler.SchedulerAdapter;
 import com.rique.ruinedcollections.storage.LeaderboardRow;
 import com.rique.ruinedcollections.util.Longs;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +20,7 @@ public final class LeaderboardService {
     private final ConcurrentMap<RankKey, RankCacheEntry> rankCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<RankKey, Boolean> rankLoads = new ConcurrentHashMap<>();
 
-    private BukkitTask refreshTask;
+    private SchedulerAdapter.TaskHandle refreshTask;
     private boolean enabled;
     private int limit;
     private long refreshTicks;
@@ -42,7 +40,7 @@ public final class LeaderboardService {
             return;
         }
         refreshAll();
-        refreshTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::refreshAll, refreshTicks, refreshTicks);
+        refreshTask = plugin.scheduler().runTimerAsync(this::refreshAll, refreshTicks, refreshTicks);
     }
 
     public void stop() {
@@ -120,7 +118,7 @@ public final class LeaderboardService {
                 ), throwable);
                 return;
             }
-            Bukkit.getScheduler().runTask(plugin, () -> store(collectionId, rows));
+            plugin.scheduler().runGlobal(() -> store(collectionId, rows));
         });
     }
 
@@ -184,10 +182,6 @@ public final class LeaderboardService {
     private String resolveName(LeaderboardRow row) {
         if (row.playerName() != null && !row.playerName().isBlank()) {
             return row.playerName();
-        }
-        Player onlinePlayer = Bukkit.getPlayer(row.playerId());
-        if (onlinePlayer != null) {
-            return onlinePlayer.getName();
         }
         String uuid = row.playerId().toString();
         return unknownNameFormat

@@ -2,6 +2,10 @@
 
 RuinedCollections is built around cheap event checks and batched storage writes.
 
+## Server Platform
+
+RuinedCollections supports Paper and Folia `1.21+` while compiling against the Paper `1.21` API. Player-facing work is routed through a scheduler adapter so Folia servers do not run player inventory, message, or reward work from a shared global task.
+
 ## Progress Writes
 
 Progress is not written to SQL on every event. The plugin batches progress and flushes it on an interval.

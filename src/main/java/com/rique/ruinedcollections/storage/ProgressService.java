@@ -4,10 +4,10 @@ import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.CollectionDefinition;
 import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.reward.RewardService;
+import com.rique.ruinedcollections.scheduler.SchedulerAdapter;
 import com.rique.ruinedcollections.util.Longs;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -24,7 +24,7 @@ public final class ProgressService {
     private final Map<UUID, Boolean> loading = new ConcurrentHashMap<>();
     private final Map<ProgressKey, AtomicLong> waitingForLoad = new ConcurrentHashMap<>();
     private final Map<ProgressKey, AtomicLong> pendingFlush = new ConcurrentHashMap<>();
-    private BukkitTask flushTask;
+    private SchedulerAdapter.TaskHandle flushTask;
 
     public ProgressService(RuinedCollectionsPlugin plugin, CollectionRepository repository, RewardService rewardService) {
         this.plugin = plugin;
@@ -34,11 +34,13 @@ public final class ProgressService {
 
     public void start() {
         long interval = Math.max(20L, plugin.getConfig().getLong("progress.flush-interval-seconds", 15) * 20L);
-        flushTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::flushAsync, interval, interval);
+        flushTask = plugin.scheduler().runTimerAsync(this::flushAsync, interval, interval);
         if (plugin.getConfig().getBoolean("progress.load-on-join", true)) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                load(player);
-            }
+            plugin.scheduler().runGlobal(() -> {
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    plugin.scheduler().runPlayer(player, () -> load(player));
+                }
+            });
         }
     }
 
@@ -53,7 +55,8 @@ public final class ProgressService {
 
     public void load(Player player) {
         UUID playerId = player.getUniqueId();
-        recordPlayerName(playerId, player.getName());
+        String playerName = player.getName();
+        recordPlayerName(playerId, playerName);
         if (sessions.containsKey(playerId) || loading.putIfAbsent(playerId, true) != null) {
             return;
         }
@@ -61,12 +64,12 @@ public final class ProgressService {
             loading.remove(playerId);
             if (throwable != null) {
                 plugin.diagnostics().error("progress", "Could not load player collection data", DiagnosticService.fields(
-                        "player", player.getName(),
+                        "player", playerName,
                         "uuid", playerId
                 ), throwable);
                 return;
             }
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            plugin.scheduler().runPlayer(player, () -> {
                 if (!player.isOnline()) {
                     plugin.diagnostics().debug("progress", "Skipped applying loaded data because player left", DiagnosticService.fields(
                             "player", player.getName(),
@@ -113,25 +116,27 @@ public final class ProgressService {
     }
 
     public void addManual(UUID playerId, String collectionId, long amount) {
-        Player player = Bukkit.getPlayer(playerId);
-        CollectionDefinition collection = plugin.collectionRegistry().get(collectionId).orElse(null);
-        if (player != null && collection != null) {
-            addProgress(player, collection, amount);
-            return;
-        }
-        repository.addProgressBatch(Map.of(new ProgressKey(playerId, collectionId), amount))
-                .whenComplete((ignored, throwable) -> {
-                    if (throwable != null) {
-                        plugin.diagnostics().error("progress", "Could not add manual progress", DiagnosticService.fields(
-                                "uuid", playerId,
-                                "collection", collectionId,
-                                "amount", amount
-                        ), throwable);
-                        return;
-                    }
-                    plugin.leaderboards().invalidate(playerId, collectionId);
-                    plugin.leaderboards().refreshCollection(collectionId);
-                });
+        plugin.scheduler().runGlobal(() -> {
+            Player player = Bukkit.getPlayer(playerId);
+            CollectionDefinition collection = plugin.collectionRegistry().get(collectionId).orElse(null);
+            if (player != null && collection != null) {
+                plugin.scheduler().runPlayer(player, () -> addProgress(player, collection, amount));
+                return;
+            }
+            repository.addProgressBatch(Map.of(new ProgressKey(playerId, collectionId), amount))
+                    .whenComplete((ignored, throwable) -> {
+                        if (throwable != null) {
+                            plugin.diagnostics().error("progress", "Could not add manual progress", DiagnosticService.fields(
+                                    "uuid", playerId,
+                                    "collection", collectionId,
+                                    "amount", amount
+                            ), throwable);
+                            return;
+                        }
+                        plugin.leaderboards().invalidate(playerId, collectionId);
+                        plugin.leaderboards().refreshCollection(collectionId);
+                    });
+        });
     }
 
     public void setProgress(UUID playerId, String collectionId, long amount) {
@@ -151,14 +156,16 @@ public final class ProgressService {
                 ), throwable);
                 return;
             }
-            Player player = Bukkit.getPlayer(playerId);
-            CollectionDefinition collection = plugin.collectionRegistry().get(collectionId).orElse(null);
-            PlayerProgressSession liveSession = sessions.get(playerId);
-            if (player != null && collection != null && liveSession != null) {
-                Bukkit.getScheduler().runTask(plugin, () -> rewardService.check(player, collection, amount, liveSession));
-            }
-            plugin.leaderboards().invalidate(playerId, collectionId);
-            plugin.leaderboards().refreshCollection(collectionId);
+            plugin.scheduler().runGlobal(() -> {
+                Player player = Bukkit.getPlayer(playerId);
+                CollectionDefinition collection = plugin.collectionRegistry().get(collectionId).orElse(null);
+                PlayerProgressSession liveSession = sessions.get(playerId);
+                if (player != null && collection != null && liveSession != null) {
+                    plugin.scheduler().runPlayer(player, () -> rewardService.check(player, collection, amount, liveSession));
+                }
+                plugin.leaderboards().invalidate(playerId, collectionId);
+                plugin.leaderboards().refreshCollection(collectionId);
+            });
         });
     }
 
@@ -180,12 +187,16 @@ public final class ProgressService {
     }
 
     public void recheckOnlineRewards() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            PlayerProgressSession session = sessions.get(player.getUniqueId());
-            if (session != null) {
-                checkAllRewards(player, session);
+        plugin.scheduler().runGlobal(() -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                plugin.scheduler().runPlayer(player, () -> {
+                    PlayerProgressSession session = sessions.get(player.getUniqueId());
+                    if (session != null) {
+                        checkAllRewards(player, session);
+                    }
+                });
             }
-        }
+        });
     }
 
     public void flushAsync() {
