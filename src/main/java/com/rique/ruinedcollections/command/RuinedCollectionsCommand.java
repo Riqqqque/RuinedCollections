@@ -4,6 +4,7 @@ import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.CollectionDefinition;
 import com.rique.ruinedcollections.collection.CollectionSourceType;
 import com.rique.ruinedcollections.diagnostics.DiagnosticService;
+import com.rique.ruinedcollections.platform.ServerCompatibility;
 import com.rique.ruinedcollections.storage.ImportPreview;
 import com.rique.ruinedcollections.util.Longs;
 import com.rique.ruinedcollections.util.Text;
@@ -439,6 +440,11 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             return;
         }
         sender.sendMessage(color("&6RuinedCollections diagnostics:"));
+        sender.sendMessage(color("&7Server: &f" + plugin.compatibility().serverName()
+                + " " + plugin.compatibility().minecraftVersion()));
+        sender.sendMessage(color("&7Bukkit: &f" + plugin.compatibility().bukkitVersion()));
+        sender.sendMessage(color("&7Support: &f" + plugin.compatibility().statusLabel()
+                + " &8(" + ServerCompatibility.SUPPORTED_RANGE + ")"));
         sender.sendMessage(color("&7Enabled: &f" + plugin.diagnostics().enabled()));
         sender.sendMessage(color("&7File: &f" + plugin.diagnostics().logPath()));
         sender.sendMessage(color("&7Size: &f" + plugin.diagnostics().logSizeBytes() + " bytes"));
