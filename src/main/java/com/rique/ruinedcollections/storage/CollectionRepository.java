@@ -138,6 +138,74 @@ public final class CollectionRepository {
         }
     }
 
+    public CompletableFuture<List<LeaderboardRow>> loadLeaderboard(String collectionId, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return loadLeaderboardSync(collectionId, limit);
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, executor);
+    }
+
+    public List<LeaderboardRow> loadLeaderboardSync(String collectionId, int limit) throws SQLException {
+        List<LeaderboardRow> rows = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT player_uuid, progress FROM " + prefix + "player_progress "
+                             + "WHERE collection_id=? AND progress > 0 ORDER BY progress DESC, player_uuid ASC LIMIT ?")) {
+            statement.setString(1, collectionId);
+            statement.setInt(2, Math.max(1, limit));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    rows.add(new LeaderboardRow(
+                            UUID.fromString(resultSet.getString("player_uuid")),
+                            Math.max(0, resultSet.getLong("progress"))
+                    ));
+                }
+            }
+        }
+        return rows;
+    }
+
+    public CompletableFuture<Long> loadPlayerRank(UUID playerId, String collectionId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return loadPlayerRankSync(playerId, collectionId);
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, executor);
+    }
+
+    public long loadPlayerRankSync(UUID playerId, String collectionId) throws SQLException {
+        long progress;
+        try (Connection connection = dataSource.getConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT progress FROM " + prefix + "player_progress WHERE player_uuid=? AND collection_id=?")) {
+                statement.setString(1, playerId.toString());
+                statement.setString(2, collectionId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) {
+                        return 0;
+                    }
+                    progress = Math.max(0, resultSet.getLong("progress"));
+                    if (progress <= 0) {
+                        return 0;
+                    }
+                }
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT COUNT(*) FROM " + prefix + "player_progress WHERE collection_id=? AND progress > ?")) {
+                statement.setString(1, collectionId);
+                statement.setLong(2, progress);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    return resultSet.next() ? resultSet.getLong(1) + 1 : 1;
+                }
+            }
+        }
+    }
+
     public CompletableFuture<Boolean> claimTier(UUID playerId, String collectionId, String tierId) {
         return CompletableFuture.supplyAsync(() -> {
             try {

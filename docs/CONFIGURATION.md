@@ -76,6 +76,23 @@ Diagnostics write detailed plugin events to `plugins/RuinedCollections/logs/diag
 
 Keep debug categories off unless you are actively investigating a problem. `tracking-skips` can be noisy on busy servers.
 
+## Leaderboards
+
+```yaml
+leaderboards:
+  enabled: true
+  refresh-interval-seconds: 60
+  entries-per-collection: 10
+  rank-cache-seconds: 30
+  empty-name: '-'
+  empty-value: '0'
+  loading-value: '...'
+```
+
+Leaderboard placeholders use a cache so PlaceholderAPI scoreboards do not query storage every tick.
+
+`entries-per-collection` controls how many top players are cached per collection. `rank-cache-seconds` controls how long player rank placeholders stay cached before being refreshed async.
+
 ## Tracking Rules
 
 ```yaml

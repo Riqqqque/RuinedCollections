@@ -5,6 +5,7 @@ import com.rique.ruinedcollections.command.CollectionsCommand;
 import com.rique.ruinedcollections.command.RuinedCollectionsCommand;
 import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.hook.HookManager;
+import com.rique.ruinedcollections.leaderboard.LeaderboardService;
 import com.rique.ruinedcollections.listener.BlockCollectionListener;
 import com.rique.ruinedcollections.listener.EntityKillCollectionListener;
 import com.rique.ruinedcollections.listener.ItemCollectionListener;
@@ -34,6 +35,7 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
     private MenuService menuService;
     private DataSnapshotService snapshots;
     private DiagnosticService diagnostics;
+    private LeaderboardService leaderboards;
 
     @Override
     public void onEnable() {
@@ -66,12 +68,14 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         menuService = new MenuService(this);
         menuService.load();
         snapshots = new DataSnapshotService(this, repository);
+        leaderboards = new LeaderboardService(this);
 
         hooks.start();
         placedBlocks.start();
         registerListeners();
         registerCommands();
         progressService.start();
+        leaderboards.start();
         diagnostics.info("startup", "Plugin enable completed", DiagnosticService.fields("collections", collectionRegistry.all().size()));
     }
 
@@ -82,6 +86,9 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         }
         if (progressService != null) {
             progressService.stop();
+        }
+        if (leaderboards != null) {
+            leaderboards.stop();
         }
         if (repository != null) {
             repository.close();
@@ -104,6 +111,9 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         menuService.load();
         if (progressService != null) {
             progressService.recheckOnlineRewards();
+        }
+        if (leaderboards != null) {
+            leaderboards.reload();
         }
         if (!issues.isEmpty()) {
             diagnostics.warn("collections", "Reloaded with collection issues", DiagnosticService.fields("issues", issues.size()));
@@ -137,6 +147,10 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
 
     public DataSnapshotService snapshots() {
         return snapshots;
+    }
+
+    public LeaderboardService leaderboards() {
+        return leaderboards;
     }
 
     public DiagnosticService diagnostics() {

@@ -21,7 +21,7 @@ Admins can create collections, set goals from small numbers to billions, track d
 | Big-server storage | SQLite by default, MySQL/MariaDB for production networks |
 | Admin safety | Validation, duplicate reward protection, import preview, exports |
 | Diagnostics | Rotating diagnostics log, command tail, and debug categories |
-| Menus and scoreboards | Configurable menus and PlaceholderAPI placeholders |
+| Menus and scoreboards | Configurable menus, PlaceholderAPI placeholders, leaderboard placeholders |
 
 ## Download
 
