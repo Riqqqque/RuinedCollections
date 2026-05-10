@@ -4,7 +4,7 @@ RuinedCollections is built around cheap event checks and batched storage writes.
 
 ## Server Platform
 
-RuinedCollections supports Paper and Folia `1.21` through `1.21.2` while compiling against the Paper `1.21` API. Player-facing work is routed through a scheduler adapter so Folia servers do not run player inventory, message, or reward work from a shared global task.
+RuinedCollections supports Paper and Folia `1.21` through `26.1.2` while compiling the release jar against the Paper `1.21` API. Player-facing work is routed through a scheduler adapter so Folia servers do not run player inventory, message, or reward work from a shared global task.
 
 ## Progress Writes
 
