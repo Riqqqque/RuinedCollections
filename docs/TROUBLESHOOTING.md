@@ -157,3 +157,7 @@ For offline progress edits, use a UUID when the player is not cached.
 ```text
 /rc set <uuid> oak_log 500
 ```
+
+## Leaderboard Shows Unknown Names
+
+The plugin saves player names when players join and uses those saved names for offline leaderboard rows. If an older UUID has progress but no saved name yet, it will use `leaderboards.unknown-name-format` until the player joins or an admin edits that player by a cached name.

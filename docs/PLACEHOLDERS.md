@@ -114,8 +114,10 @@ Examples:
 
 Rank placeholders use the player supplied by PlaceholderAPI. The first formatted rank request may return the configured loading value while the rank is loaded async. Raw rank placeholders return `0` until the cache is ready.
 
+Top leaderboard names use a last-known player name saved when the player joins. This keeps names stable after the player logs out and avoids depending on Bukkit's offline player name cache. If a UUID has progress but no saved name yet, the name placeholder uses `leaderboards.unknown-name-format`.
+
 ## Notes
 
-Placeholders use cached online player data. Offline placeholder requests return empty or zero values because the plugin does not load every offline player into memory.
+Progress, next goal, remaining, percent, and tier placeholders use cached online player data. Offline requests for those values return empty or zero because the plugin does not load every offline player into memory.
 
-Leaderboard top placeholders do not require an online player. Player rank placeholders require a player context.
+Leaderboard top placeholders do not require an online player. Player rank placeholders work for online or offline player contexts as long as PlaceholderAPI supplies a UUID.

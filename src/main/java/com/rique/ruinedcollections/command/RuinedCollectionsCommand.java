@@ -188,6 +188,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             sender.sendMessage(color("&cPlayer not found. Use an online player, cached player, or UUID."));
             return;
         }
+        rememberPlayerName(player);
         plugin.progressService().addManual(player.getUniqueId(), collection.get().id(), amount);
         sender.sendMessage(color(plugin.getConfig().getString("messages.progress-added")
                 .replace("%amount%", Longs.format(amount))
@@ -212,6 +213,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             sender.sendMessage(color("&cPlayer not found. Use an online player, cached player, or UUID."));
             return;
         }
+        rememberPlayerName(player);
         plugin.progressService().setProgress(player.getUniqueId(), collection.get().id(), amount);
         sender.sendMessage(color(plugin.getConfig().getString("messages.progress-set")
                 .replace("%amount%", Longs.format(amount))
@@ -235,6 +237,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             sender.sendMessage(color("&cPlayer not found. Use an online player, cached player, or UUID."));
             return;
         }
+        rememberPlayerName(player);
         plugin.progressService().setProgress(player.getUniqueId(), collection.get().id(), 0);
         sender.sendMessage(color(plugin.getConfig().getString("messages.progress-reset")
                 .replace("%player%", args[1])
@@ -394,7 +397,8 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         boolean apply = args.length >= 3 && "--apply".equalsIgnoreCase(args[2]);
         if (!apply) {
             sender.sendMessage(color("&eImport preview: &f" + preview.progressRows().size() + " &eprogress rows, &f"
-                    + preview.claimedRows().size() + " &eclaimed tiers. Run with --apply to import."));
+                    + preview.claimedRows().size() + " &eclaimed tiers, &f"
+                    + preview.playerNames().size() + " &eplayer names. Run with --apply to import."));
             return;
         }
         plugin.snapshots().apply(preview).whenComplete((ignored, throwable) ->
@@ -404,7 +408,8 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
                                 "sender", sender.getName(),
                                 "file", file.getAbsolutePath(),
                                 "progressRows", preview.progressRows().size(),
-                                "claimedRows", preview.claimedRows().size()
+                                "claimedRows", preview.claimedRows().size(),
+                                "playerNames", preview.playerNames().size()
                         ), throwable);
                         sender.sendMessage(color("&cImport failed: " + throwable.getMessage()));
                         return;
@@ -478,6 +483,10 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         } catch (IllegalArgumentException ignored) {
             return Bukkit.getOfflinePlayerIfCached(input);
         }
+    }
+
+    private void rememberPlayerName(OfflinePlayer player) {
+        plugin.progressService().recordPlayerName(player.getUniqueId(), player.getName());
     }
 
     private String color(String text) {

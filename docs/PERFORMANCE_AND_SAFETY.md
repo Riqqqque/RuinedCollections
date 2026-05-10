@@ -75,6 +75,7 @@ Recommended settings:
 
 ## Known Limits
 
-- Offline PlaceholderAPI requests return zero or empty values because the plugin does not load all offline player data into memory.
+- Offline progress-style PlaceholderAPI requests return zero or empty values because the plugin does not load all offline player data into memory.
+- Leaderboard top placeholders use stored last-known names and do not require the player to be online.
 - Custom block support depends on the custom block plugin unless progress is added manually.
 - Economy rewards need Vault and a registered economy provider.

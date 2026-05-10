@@ -15,6 +15,7 @@ rc_schema
 rc_player_progress
 rc_claimed_tiers
 rc_placed_blocks
+rc_player_names
 ```
 
 The table prefix comes from:
@@ -63,6 +64,16 @@ material
 created_at
 ```
 
+## Player Names
+
+Player names are stored by UUID when players join. Leaderboard placeholders use this table so offline players keep stable display names.
+
+```text
+player_uuid
+player_name
+updated_at
+```
+
 ## Export
 
 ```text
@@ -79,6 +90,7 @@ Exports include:
 
 - format version
 - export timestamp
+- last-known player names
 - player UUIDs
 - collection progress
 - claimed tiers
@@ -101,7 +113,7 @@ Import sets progress to the values in the file and inserts claimed tiers if miss
 
 ## Migration Design
 
-The plugin creates `rc_schema` with a version number. Future builds can use this table to apply database migrations safely.
+The plugin creates `rc_schema` with a version number. Database changes are applied automatically on startup with `CREATE TABLE IF NOT EXISTS` style migrations.
 
 Recommended server practice:
 

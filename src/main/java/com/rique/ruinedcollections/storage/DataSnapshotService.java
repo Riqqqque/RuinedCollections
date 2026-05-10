@@ -23,10 +23,19 @@ public final class DataSnapshotService {
     }
 
     public CompletableFuture<File> exportData(File file) {
-        return repository.loadAllProgress().thenCombine(repository.loadAllClaimed(), (progress, claimed) -> {
+        CompletableFuture<List<ProgressRow>> progressFuture = repository.loadAllProgress();
+        CompletableFuture<List<ClaimedRow>> claimedFuture = repository.loadAllClaimed();
+        CompletableFuture<List<PlayerNameRow>> namesFuture = repository.loadAllPlayerNames();
+        return CompletableFuture.allOf(progressFuture, claimedFuture, namesFuture).thenApply(ignored -> {
+            List<ProgressRow> progress = progressFuture.join();
+            List<ClaimedRow> claimed = claimedFuture.join();
+            List<PlayerNameRow> names = namesFuture.join();
             YamlConfiguration config = new YamlConfiguration();
-            config.set("format-version", 1);
+            config.set("format-version", 2);
             config.set("exported-at", Instant.now().toString());
+            for (PlayerNameRow row : names) {
+                config.set("players." + row.playerId() + ".name", row.playerName());
+            }
             for (ProgressRow row : progress) {
                 String base = "players." + row.playerId();
                 config.set(base + ".collections." + row.collectionId() + ".progress", row.progress());
@@ -48,7 +57,8 @@ public final class DataSnapshotService {
                 plugin.diagnostics().info("export", "Exported collection data", DiagnosticService.fields(
                         "file", file.getAbsolutePath(),
                         "progressRows", progress.size(),
-                        "claimedRows", claimed.size()
+                        "claimedRows", claimed.size(),
+                        "playerNames", names.size()
                 ));
                 return file;
             } catch (IOException exception) {
@@ -61,9 +71,10 @@ public final class DataSnapshotService {
         YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
         List<ProgressRow> progressRows = new ArrayList<>();
         List<ClaimedRow> claimedRows = new ArrayList<>();
+        List<PlayerNameRow> playerNames = new ArrayList<>();
         ConfigurationSection players = config.getConfigurationSection("players");
         if (players == null) {
-            return new ImportPreview(progressRows, claimedRows);
+            return new ImportPreview(progressRows, claimedRows, playerNames);
         }
         for (String uuidText : players.getKeys(false)) {
             UUID playerId;
@@ -72,6 +83,10 @@ public final class DataSnapshotService {
             } catch (IllegalArgumentException ignored) {
                 plugin.diagnostics().warn("import", "Skipped invalid UUID in import", DiagnosticService.fields("uuid", uuidText));
                 continue;
+            }
+            String playerName = players.getString(uuidText + ".name");
+            if (playerName != null && !playerName.isBlank()) {
+                playerNames.add(new PlayerNameRow(playerId, playerName));
             }
             ConfigurationSection collections = players.getConfigurationSection(uuidText + ".collections");
             if (collections == null) {
@@ -85,14 +100,15 @@ public final class DataSnapshotService {
                 }
             }
         }
-        return new ImportPreview(progressRows, claimedRows);
+        return new ImportPreview(progressRows, claimedRows, playerNames);
     }
 
     public CompletableFuture<Void> apply(ImportPreview preview) {
         plugin.diagnostics().info("import", "Applying import snapshot", DiagnosticService.fields(
                 "progressRows", preview.progressRows().size(),
-                "claimedRows", preview.claimedRows().size()
+                "claimedRows", preview.claimedRows().size(),
+                "playerNames", preview.playerNames().size()
         ));
-        return repository.applySnapshot(preview.progressRows(), preview.claimedRows());
+        return repository.applySnapshot(preview.progressRows(), preview.claimedRows(), preview.playerNames());
     }
 }

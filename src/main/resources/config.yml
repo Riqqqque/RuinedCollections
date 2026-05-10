@@ -42,6 +42,7 @@ leaderboards:
   empty-name: '-'
   empty-value: '0'
   loading-value: '...'
+  unknown-name-format: 'Unknown-%short_uuid%'
 
 tracking:
   ignore-creative: true
