@@ -98,6 +98,7 @@ Local docs are also kept in this repository:
 - [Performance and Safety](docs/PERFORMANCE_AND_SAFETY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Ruined Ecosystem Parity](docs/RUINED_ECOSYSTEM_PARITY.md)
 
 ## Build
 
