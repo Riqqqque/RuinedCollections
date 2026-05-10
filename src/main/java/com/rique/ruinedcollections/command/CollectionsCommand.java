@@ -25,7 +25,7 @@ public final class CollectionsCommand implements CommandExecutor {
             player.sendMessage(Text.color(plugin.messagePrefix() + plugin.getConfig().getString("messages.no-permission")));
             return true;
         }
-        plugin.menuService().openMain(player, 0);
+        plugin.scheduler().runPlayer(player, () -> plugin.menuService().openMain(player, 0));
         return true;
     }
 }

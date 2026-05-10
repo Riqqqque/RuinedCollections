@@ -6,7 +6,7 @@ This page covers the normal install path, first boot, and the checks worth doing
 
 | Requirement | Notes |
 | --- | --- |
-| Paper | `1.21+` |
+| Paper or Folia | `1.21+` |
 | Java | `21+` |
 | PlaceholderAPI | Optional, for placeholders |
 | Vault | Optional, for economy rewards |

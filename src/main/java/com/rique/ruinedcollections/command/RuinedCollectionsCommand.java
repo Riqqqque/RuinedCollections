@@ -168,7 +168,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             sender.sendMessage(color("&cUsage: /rc open <player>"));
             return;
         }
-        plugin.menuService().openMain(target, 0);
+        plugin.scheduler().runPlayer(target, () -> plugin.menuService().openMain(target, 0));
     }
 
     private void add(CommandSender sender, String[] args) {
@@ -364,7 +364,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         plugin.progressService().flushSync();
         File file = dataFile(args[1]);
         plugin.snapshots().exportData(file).whenComplete((result, throwable) ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.scheduler().runSender(sender, () -> {
                     if (throwable != null) {
                         plugin.diagnostics().error("export", "Export failed", DiagnosticService.fields(
                                 "sender", sender.getName(),
@@ -402,7 +402,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             return;
         }
         plugin.snapshots().apply(preview).whenComplete((ignored, throwable) ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.scheduler().runSender(sender, () -> {
                     if (throwable != null) {
                         plugin.diagnostics().error("import", "Import failed", DiagnosticService.fields(
                                 "sender", sender.getName(),
@@ -414,11 +414,11 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
                         sender.sendMessage(color("&cImport failed: " + throwable.getMessage()));
                         return;
                     }
-                    preview.progressRows().stream()
+                    plugin.scheduler().runGlobal(() -> preview.progressRows().stream()
                             .map(row -> Bukkit.getPlayer(row.playerId()))
                             .filter(player -> player != null && player.isOnline())
                             .distinct()
-                            .forEach(player -> plugin.progressService().refresh(player));
+                            .forEach(player -> plugin.scheduler().runPlayer(player, () -> plugin.progressService().refresh(player))));
                     sender.sendMessage(color("&aImported data."));
                 }));
     }

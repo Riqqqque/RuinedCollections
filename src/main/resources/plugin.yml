@@ -3,7 +3,8 @@ main: com.rique.ruinedcollections.RuinedCollectionsPlugin
 version: ${project.version}
 api-version: '1.21'
 author: Rique
-description: Highly configurable player collections for Paper servers.
+description: Highly configurable player collections for Paper and Folia servers.
+folia-supported: true
 softdepend:
   - PlaceholderAPI
   - Vault

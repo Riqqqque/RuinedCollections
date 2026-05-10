@@ -21,14 +21,16 @@ public final class RewardService {
     }
 
     public void check(Player player, CollectionDefinition collection, long progress, PlayerProgressSession session) {
+        String playerName = player.getName();
+        String playerId = player.getUniqueId().toString();
         for (CollectionTier tier : collection.tiers()) {
             if (progress < tier.goal() || session.hasClaimed(collection.id(), tier.id())) {
                 continue;
             }
             if (!session.startClaim(collection.id(), tier.id())) {
                 plugin.diagnostics().debug("rewards", "Skipped reward claim because tier is already claiming", DiagnosticService.fields(
-                        "player", player.getName(),
-                        "uuid", player.getUniqueId(),
+                        "player", playerName,
+                        "uuid", playerId,
                         "collection", collection.id(),
                         "tier", tier.id()
                 ));
@@ -38,14 +40,14 @@ public final class RewardService {
                 if (throwable != null) {
                     session.cancelClaim(collection.id(), tier.id());
                     plugin.diagnostics().error("rewards", "Could not mark tier as claimed", DiagnosticService.fields(
-                            "player", player.getName(),
-                            "uuid", player.getUniqueId(),
+                            "player", playerName,
+                            "uuid", playerId,
                             "collection", collection.id(),
                             "tier", tier.id()
                     ), throwable);
                     return;
                 }
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.scheduler().runPlayer(player, () -> {
                     if (!Boolean.TRUE.equals(inserted)) {
                         session.finishClaim(collection.id(), tier.id());
                         plugin.diagnostics().debug("rewards", "Skipped reward execution because tier was already claimed in storage", DiagnosticService.fields(
@@ -99,7 +101,7 @@ public final class RewardService {
         for (RewardAction reward : tier.rewards()) {
             switch (reward.type()) {
                 case MESSAGE -> player.sendMessage(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
-                case BROADCAST -> Bukkit.broadcast(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
+                case BROADCAST -> plugin.scheduler().broadcast(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
                 case COMMAND -> runCommand(player, reward, placeholders);
                 case ECONOMY -> {
                     if (reward.amount() > 0 && !plugin.hooks().economy().deposit(player, reward.amount())) {
