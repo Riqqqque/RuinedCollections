@@ -106,7 +106,7 @@ mvn clean package
 The compiled plugin jar is created at:
 
 ```text
-target/ruinedcollections-1.0.1.jar
+target/ruinedcollections-1.0.2.jar
 ```
 
 ## License

@@ -6,7 +6,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,17 +83,6 @@ public final class DataSnapshotService {
     }
 
     public CompletableFuture<Void> apply(ImportPreview preview) {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                for (ProgressRow row : preview.progressRows()) {
-                    repository.setProgressSync(row.playerId(), row.collectionId(), row.progress());
-                }
-                for (ClaimedRow row : preview.claimedRows()) {
-                    repository.claimTierSync(row.playerId(), row.collectionId(), row.tierId());
-                }
-            } catch (SQLException exception) {
-                throw new CollectionRepository.StorageException(exception);
-            }
-        });
+        return repository.applySnapshot(preview.progressRows(), preview.claimedRows());
     }
 }
