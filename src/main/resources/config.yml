@@ -33,6 +33,16 @@ diagnostics:
     rewards: false
     commands: false
 
+leaderboards:
+  # PlaceholderAPI leaderboard placeholders are served from this cache.
+  enabled: true
+  refresh-interval-seconds: 60
+  entries-per-collection: 10
+  rank-cache-seconds: 30
+  empty-name: '-'
+  empty-value: '0'
+  loading-value: '...'
+
 tracking:
   ignore-creative: true
   ignore-spectator: true
