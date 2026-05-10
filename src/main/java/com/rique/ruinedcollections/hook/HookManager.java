@@ -18,20 +18,21 @@ public final class HookManager {
             try {
                 economyProvider = VaultEconomyProvider.create(plugin);
                 if (economyProvider.enabled()) {
-                    plugin.getLogger().info("Hooked Vault economy.");
+                    plugin.diagnostics().info("hooks", "Hooked Vault economy");
                 }
             } catch (NoClassDefFoundError error) {
                 economyProvider = new NoEconomyProvider();
+                plugin.diagnostics().debug("rewards", "Vault API was not available for economy rewards", java.util.Map.of("hook", "Vault"));
             }
         }
         placeholderApiEnabled = plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI");
         if (placeholderApiEnabled) {
             PlaceholderBridge.register(plugin);
-            plugin.getLogger().info("Hooked PlaceholderAPI.");
+            plugin.diagnostics().info("hooks", "Hooked PlaceholderAPI");
         }
         luckPermsEnabled = plugin.getServer().getPluginManager().isPluginEnabled("LuckPerms");
         if (luckPermsEnabled) {
-            plugin.getLogger().info("LuckPerms found. Use command rewards for group or permission changes.");
+            plugin.diagnostics().info("hooks", "LuckPerms found; command rewards can manage permissions");
         }
     }
 

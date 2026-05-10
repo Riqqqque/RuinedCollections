@@ -2,6 +2,7 @@ package com.rique.ruinedcollections.listener;
 
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.ProgressMatch;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -38,6 +39,15 @@ public final class BlockCollectionListener implements Listener {
             return;
         }
         if (playerPlaced) {
+            plugin.diagnostics().debug("tracking", "Skipped player-placed block break", DiagnosticService.fields(
+                    "player", event.getPlayer().getName(),
+                    "uuid", event.getPlayer().getUniqueId(),
+                    "world", event.getBlock().getWorld().getName(),
+                    "x", event.getBlock().getX(),
+                    "y", event.getBlock().getY(),
+                    "z", event.getBlock().getZ(),
+                    "material", event.getBlock().getType().name()
+            ));
             return;
         }
         for (ProgressMatch match : plugin.collectionRegistry().matchBlockBreak(event.getBlock().getType())) {

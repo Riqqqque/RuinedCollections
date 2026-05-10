@@ -23,6 +23,7 @@ Examples:
 /rc create <tab> <tab>
 /rc source add <collection> <tab>
 /rc reward add-command <collection> <tab>
+/rc diagnostics <tab>
 ```
 
 ## Player Commands
@@ -221,6 +222,22 @@ plugins/RuinedCollections/exports/
 
 Online players touched by the import are refreshed after the import applies.
 
+### Diagnostics
+
+```text
+/rc diagnostics
+/rc diagnostics path
+/rc diagnostics tail [lines]
+```
+
+Shows diagnostics status, the diagnostics log path, or recent diagnostics lines.
+
+Permission:
+
+```text
+ruinedcollections.admin.diagnostics
+```
+
 ## Permissions
 
 ```text
@@ -229,6 +246,7 @@ ruinedcollections.admin.reload
 ruinedcollections.admin.modify
 ruinedcollections.admin.export
 ruinedcollections.admin.import
+ruinedcollections.admin.diagnostics
 ruinedcollections.menu
 ruinedcollections.view
 ```

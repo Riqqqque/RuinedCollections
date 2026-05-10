@@ -20,6 +20,7 @@ Admins can create collections, set goals from small numbers to billions, track d
 | Custom blocks | Manual progress and external command workflows |
 | Big-server storage | SQLite by default, MySQL/MariaDB for production networks |
 | Admin safety | Validation, duplicate reward protection, import preview, exports |
+| Diagnostics | Rotating diagnostics log, command tail, and debug categories |
 | Menus and scoreboards | Configurable menus and PlaceholderAPI placeholders |
 
 ## Download
@@ -88,6 +89,7 @@ Local docs are also kept in this repository:
 - [Collection Examples](docs/EXAMPLES.md)
 - [Commands](docs/COMMANDS.md)
 - [Rewards](docs/REWARDS.md)
+- [Diagnostics](docs/DIAGNOSTICS.md)
 - [Menus](docs/MENUS.md)
 - [Placeholders](docs/PLACEHOLDERS.md)
 - [Storage, Import, Export, and Migrations](docs/STORAGE_AND_MIGRATIONS.md)

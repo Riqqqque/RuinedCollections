@@ -3,6 +3,7 @@ package com.rique.ruinedcollections;
 import com.rique.ruinedcollections.collection.CollectionRegistry;
 import com.rique.ruinedcollections.command.CollectionsCommand;
 import com.rique.ruinedcollections.command.RuinedCollectionsCommand;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.hook.HookManager;
 import com.rique.ruinedcollections.listener.BlockCollectionListener;
 import com.rique.ruinedcollections.listener.EntityKillCollectionListener;
@@ -21,7 +22,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.SQLException;
 import java.util.List;
-import java.util.logging.Level;
 
 public final class RuinedCollectionsPlugin extends JavaPlugin {
     private CollectionRegistry collectionRegistry;
@@ -33,23 +33,27 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
     private PlacedBlockService placedBlocks;
     private MenuService menuService;
     private DataSnapshotService snapshots;
+    private DiagnosticService diagnostics;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        diagnostics = new DiagnosticService(this);
+        diagnostics.load();
+        diagnostics.info("startup", "Plugin enable started", DiagnosticService.fields("version", getPluginMeta().getVersion()));
 
         collectionRegistry = new CollectionRegistry(this);
         collectionRegistry.ensureDefaults();
         List<String> issues = collectionRegistry.load();
         if (!issues.isEmpty()) {
-            getLogger().warning("Loaded with " + issues.size() + " collection issue(s). Run /rc validate for details.");
+            diagnostics.warn("collections", "Loaded with collection issues", DiagnosticService.fields("issues", issues.size()));
         }
 
         databaseManager = new DatabaseManager();
         try {
             databaseManager.start(this);
         } catch (SQLException exception) {
-            getLogger().log(Level.SEVERE, "Could not start storage.", exception);
+            diagnostics.error("storage", "Could not start storage", exception);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -68,10 +72,14 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         registerListeners();
         registerCommands();
         progressService.start();
+        diagnostics.info("startup", "Plugin enable completed", DiagnosticService.fields("collections", collectionRegistry.all().size()));
     }
 
     @Override
     public void onDisable() {
+        if (diagnostics != null) {
+            diagnostics.info("shutdown", "Plugin disable started");
+        }
         if (progressService != null) {
             progressService.stop();
         }
@@ -81,18 +89,26 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         if (databaseManager != null) {
             databaseManager.close();
         }
+        if (diagnostics != null) {
+            diagnostics.close();
+        }
     }
 
     public void reloadAll() {
         reloadConfig();
+        if (diagnostics != null) {
+            diagnostics.load();
+            diagnostics.info("reload", "Plugin reload started");
+        }
         List<String> issues = collectionRegistry.load();
         menuService.load();
         if (progressService != null) {
             progressService.recheckOnlineRewards();
         }
         if (!issues.isEmpty()) {
-            getLogger().warning("Reloaded with " + issues.size() + " collection issue(s). Run /rc validate for details.");
+            diagnostics.warn("collections", "Reloaded with collection issues", DiagnosticService.fields("issues", issues.size()));
         }
+        diagnostics.info("reload", "Plugin reload completed", DiagnosticService.fields("collections", collectionRegistry.all().size()));
     }
 
     public CollectionRegistry collectionRegistry() {
@@ -121,6 +137,10 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
 
     public DataSnapshotService snapshots() {
         return snapshots;
+    }
+
+    public DiagnosticService diagnostics() {
+        return diagnostics;
     }
 
     public String messagePrefix() {

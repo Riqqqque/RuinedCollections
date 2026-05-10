@@ -2,6 +2,7 @@ package com.rique.ruinedcollections.listener;
 
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.ProgressMatch;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.util.Longs;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -32,6 +33,13 @@ public final class ItemCollectionListener implements Listener {
         ItemStack item = event.getItem().getItemStack().clone();
         int pickedUp = item.getAmount() - event.getRemaining();
         if (pickedUp <= 0) {
+            plugin.diagnostics().debug("tracking", "Skipped item pickup because no items were collected", DiagnosticService.fields(
+                    "player", player.getName(),
+                    "uuid", player.getUniqueId(),
+                    "material", item.getType().name(),
+                    "stackAmount", item.getAmount(),
+                    "remaining", event.getRemaining()
+            ));
             return;
         }
         item.setAmount(pickedUp);

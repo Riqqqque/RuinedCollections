@@ -55,6 +55,27 @@ Progress is cached in memory and flushed in batches. Lower flush intervals write
 
 The plugin always flushes pending progress on shutdown.
 
+## Diagnostics
+
+```yaml
+diagnostics:
+  enabled: true
+  file: logs/diagnostics.log
+  mirror-warnings-to-console: true
+  include-stack-traces: true
+  max-file-size-mb: 8
+  max-archives: 5
+  debug:
+    tracking-skips: false
+    progress: false
+    rewards: false
+    commands: false
+```
+
+Diagnostics write detailed plugin events to `plugins/RuinedCollections/logs/diagnostics.log` by default.
+
+Keep debug categories off unless you are actively investigating a problem. `tracking-skips` can be noisy on busy servers.
+
 ## Tracking Rules
 
 ```yaml

@@ -17,6 +17,13 @@ Look for startup errors near:
 [RuinedCollections]
 ```
 
+Then check:
+
+```text
+/rc diagnostics path
+/rc diagnostics tail 25
+```
+
 ## Collection Does Not Count Progress
 
 Run:
@@ -34,6 +41,16 @@ Check the collection file:
 - Player is not in creative or spectator if those modes are ignored.
 - For block break collections, the block was not player-placed while placed-block protection is enabled.
 
+If it still does not count, temporarily enable:
+
+```yaml
+diagnostics:
+  debug:
+    tracking-skips: true
+```
+
+Run `/rc reload`, reproduce the issue, then check `/rc diagnostics tail 25`.
+
 ## Reward Did Not Run
 
 Check:
@@ -45,6 +62,14 @@ Check:
 - Economy rewards have Vault and an economy plugin installed.
 
 Remember: claimed tier rewards only run once per player.
+
+For reward debugging, temporarily enable:
+
+```yaml
+diagnostics:
+  debug:
+    rewards: true
+```
 
 ## Economy Reward Does Nothing
 
