@@ -55,6 +55,10 @@ detail:
       - '&aUnlocked'
 ```
 
+The detail menu paginates tiers automatically. If a collection has more tiers than fit in the content grid, previous and next buttons use the materials configured in `config.yml`.
+
+Menu page changes are scheduled through the platform scheduler. This keeps menu navigation safe on Paper and Folia instead of opening a new inventory directly inside a click event.
+
 ## Menu Placeholders
 
 Main menu collection lore:

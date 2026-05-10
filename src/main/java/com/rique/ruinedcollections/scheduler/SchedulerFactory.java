@@ -13,7 +13,7 @@ public final class SchedulerFactory {
                 plugin.getLogger().info("Scheduler mode: Folia");
                 return new FoliaSchedulerAdapter(plugin);
             } catch (Throwable throwable) {
-                plugin.getLogger().warning("Folia scheduler initialization failed, falling back to Paper scheduler: " + throwable.getMessage());
+                throw new IllegalStateException("Folia scheduler initialization failed", throwable);
             }
         }
         plugin.getLogger().info("Scheduler mode: Paper");

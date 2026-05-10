@@ -15,7 +15,9 @@ progress:
   flush-interval-seconds: 15
 ```
 
-On shutdown, pending progress is flushed synchronously.
+On player quit, that player's pending progress is flushed without forcing every other online player through an immediate database write. On shutdown, all pending progress is flushed synchronously.
+
+Progress earned while a player is still loading is queued and saved safely if the player leaves before loading finishes.
 
 ## Large Goals
 
@@ -34,6 +36,8 @@ Progress addition is clamped to avoid overflow.
 ## Reward Safety
 
 Rewards are protected by the claimed tier table. If a player crosses a tier multiple times, the reward should only run once.
+
+Console command rewards run through the global scheduler on Folia. Player command rewards run on that player's scheduler.
 
 ## Player-Placed Block Protection
 
@@ -76,6 +80,7 @@ Recommended settings:
 - Avoid catch-all item pickup sources unless needed.
 - Use `/rc validate` after every config change.
 - Back up before imports.
+- Keep `leaderboards.refresh-interval-seconds` at `30` or higher unless the server is small.
 
 ## Known Limits
 

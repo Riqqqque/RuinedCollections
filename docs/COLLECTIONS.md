@@ -36,7 +36,7 @@ tiers:
 
 ## Id Rules
 
-Collection ids should use lowercase letters, numbers, `_`, and `-`.
+Collection ids must use 1-64 lowercase letters, numbers, `_`, and `-`.
 
 Good:
 
@@ -141,7 +141,7 @@ Killing one Wither gives 100 progress.
 
 ## Tiers
 
-Tiers are ordered by goal. Goals use `long`, so billions are fine.
+Tiers are ordered by goal. Goals use `long`, so billions are fine. Tier ids must use 1-64 letters, numbers, `_`, and `-`.
 
 ```yaml
 tiers:

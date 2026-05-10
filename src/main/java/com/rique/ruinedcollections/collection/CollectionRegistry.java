@@ -14,6 +14,7 @@ import org.bukkit.inventory.ItemStack;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -25,12 +26,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public final class CollectionRegistry {
     private static final String ID_PATTERN = "[a-z0-9_-]+";
+    private static final String TIER_ID_PATTERN = "[A-Za-z0-9_-]+";
+    private static final int MAX_ID_LENGTH = 64;
 
     private final RuinedCollectionsPlugin plugin;
     private final File collectionsFolder;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Map<String, CollectionDefinition> collections = new LinkedHashMap<>();
     private final Map<String, File> filesById = new HashMap<>();
 
@@ -58,213 +64,319 @@ public final class CollectionRegistry {
     }
 
     public List<String> load() {
-        collections.clear();
-        filesById.clear();
-        clearIndexes();
-        if (!collectionsFolder.exists() && !collectionsFolder.mkdirs()) {
-            return List.of("Could not create collections folder.");
-        }
-
-        List<String> issues = new ArrayList<>();
-        File[] files = collectionsFolder.listFiles((dir, name) -> name.endsWith(".yml") || name.endsWith(".yaml"));
-        if (files == null) {
-            return List.of("Could not list collection files.");
-        }
-        for (File file : files) {
-            try {
-                parseFile(file, issues).ifPresent(collection -> {
-                    collections.put(collection.id(), collection);
-                    filesById.put(collection.id(), file);
-                });
-            } catch (RuntimeException exception) {
-                issues.add(file.getName() + ": " + exception.getMessage());
+        lock.writeLock().lock();
+        try {
+            collections.clear();
+            filesById.clear();
+            clearIndexes();
+            if (!collectionsFolder.exists() && !collectionsFolder.mkdirs()) {
+                return List.of("Could not create collections folder.");
             }
+
+            List<String> issues = new ArrayList<>();
+            File[] files = collectionsFolder.listFiles((dir, name) -> name.endsWith(".yml") || name.endsWith(".yaml"));
+            if (files == null) {
+                return List.of("Could not list collection files.");
+            }
+            Arrays.sort(files, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+            for (File file : files) {
+                try {
+                    parseFile(file, issues).ifPresent(collection -> {
+                        collections.put(collection.id(), collection);
+                        filesById.put(collection.id(), file);
+                    });
+                } catch (RuntimeException exception) {
+                    issues.add(file.getName() + ": " + exception.getMessage());
+                }
+            }
+            buildIndexes();
+            validateMenuSlots(issues);
+            for (String issue : issues) {
+                plugin.diagnostics().warn("collections", issue);
+            }
+            return issues;
+        } finally {
+            lock.writeLock().unlock();
         }
-        buildIndexes();
-        validateMenuSlots(issues);
-        for (String issue : issues) {
-            plugin.diagnostics().warn("collections", issue);
-        }
-        return issues;
     }
 
     public Collection<CollectionDefinition> all() {
-        return collections.values();
+        lock.readLock().lock();
+        try {
+            return List.copyOf(collections.values());
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<CollectionDefinition> enabledCollections() {
-        return collections.values().stream()
-                .filter(CollectionDefinition::enabled)
-                .sorted(Comparator.comparingInt(CollectionDefinition::menuSlot).thenComparing(CollectionDefinition::id))
-                .toList();
+        lock.readLock().lock();
+        try {
+            return collections.values().stream()
+                    .filter(CollectionDefinition::enabled)
+                    .sorted(Comparator.comparingInt(CollectionDefinition::menuSlot).thenComparing(CollectionDefinition::id))
+                    .toList();
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public Optional<CollectionDefinition> get(String id) {
-        return Optional.ofNullable(collections.get(normalizeId(id)));
+        lock.readLock().lock();
+        try {
+            return Optional.ofNullable(collections.get(normalizeId(id)));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public boolean isTrackedBlockMaterial(Material material) {
-        return blockBreak.containsKey(material) || !blockBreakAny.isEmpty();
+        lock.readLock().lock();
+        try {
+            return blockBreak.containsKey(material) || !blockBreakAny.isEmpty();
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<ProgressMatch> matchBlockBreak(Material material) {
-        return matchMaterial(material, blockBreak, blockBreakAny, 1);
+        lock.readLock().lock();
+        try {
+            return matchMaterial(material, blockBreak, blockBreakAny, 1);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<ProgressMatch> matchEntityKill(EntityType entityType) {
-        Map<String, Long> matches = new LinkedHashMap<>();
-        for (TrackedSource trackedSource : entityKillAny) {
-            add(matches, trackedSource.collection.id(), trackedSource.rule.amount());
+        lock.readLock().lock();
+        try {
+            Map<String, Long> matches = new LinkedHashMap<>();
+            for (TrackedSource trackedSource : entityKillAny) {
+                add(matches, trackedSource.collection.id(), trackedSource.rule.amount());
+            }
+            for (TrackedSource trackedSource : entityKill.getOrDefault(entityType, List.of())) {
+                add(matches, trackedSource.collection.id(), trackedSource.rule.amount());
+            }
+            return toMatches(matches);
+        } finally {
+            lock.readLock().unlock();
         }
-        for (TrackedSource trackedSource : entityKill.getOrDefault(entityType, List.of())) {
-            add(matches, trackedSource.collection.id(), trackedSource.rule.amount());
-        }
-        return toMatches(matches);
     }
 
     public List<ProgressMatch> matchItemPickup(ItemStack item) {
-        return matchItem(item, itemPickup, itemPickupAny, item == null ? 0 : item.getAmount());
+        lock.readLock().lock();
+        try {
+            return matchItem(item, itemPickup, itemPickupAny, item == null ? 0 : item.getAmount());
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<ProgressMatch> matchCraft(ItemStack item, int craftedAmount) {
-        return matchItem(item, craft, craftAny, craftedAmount);
+        lock.readLock().lock();
+        try {
+            return matchItem(item, craft, craftAny, craftedAmount);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<ProgressMatch> matchFish(ItemStack item) {
-        return matchItem(item, fish, fishAny, item == null ? 0 : item.getAmount());
+        lock.readLock().lock();
+        try {
+            return matchItem(item, fish, fishAny, item == null ? 0 : item.getAmount());
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public File fileFor(String id) {
-        return filesById.get(normalizeId(id));
+        lock.readLock().lock();
+        try {
+            return filesById.get(normalizeId(id));
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public boolean createCollection(String id, Material material, String displayName) throws IOException {
-        String normalized = normalizeId(id);
-        if (!normalized.matches(ID_PATTERN) || collections.containsKey(normalized)) {
-            plugin.diagnostics().debug("commands", "Create collection rejected", DiagnosticService.fields(
-                    "collection", normalized,
-                    "reason", collections.containsKey(normalized) ? "duplicate" : "invalid_id"
-            ));
+        if (material == null || material.isAir()) {
             return false;
         }
-        File file = new File(collectionsFolder, normalized + ".yml");
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("id", normalized);
-        config.set("enabled", true);
-        config.set("display-name", displayName == null || displayName.isBlank() ? title(normalized) : displayName);
-        config.set("description", List.of("&7New collection."));
-        config.set("display-item.material", material.name());
-        config.set("menu-slot", -1);
-        Map<String, Object> source = new LinkedHashMap<>();
-        source.put("type", "BLOCK_BREAK");
-        source.put("materials", List.of(material.name()));
-        config.set("sources", List.of(source));
-        config.set("tiers", List.of(tierMap("I", 50), tierMap("II", 100), tierMap("III", 500)));
-        config.save(file);
-        return true;
+        String normalized = normalizeId(id);
+        lock.writeLock().lock();
+        try {
+            if (!validId(normalized) || collections.containsKey(normalized)) {
+                plugin.diagnostics().debug("commands", "Create collection rejected", DiagnosticService.fields(
+                        "collection", normalized,
+                        "reason", collections.containsKey(normalized) ? "duplicate" : "invalid_id"
+                ));
+                return false;
+            }
+            File file = new File(collectionsFolder, normalized + ".yml");
+            if (file.exists()) {
+                plugin.diagnostics().debug("commands", "Create collection rejected", DiagnosticService.fields(
+                        "collection", normalized,
+                        "reason", "file_exists"
+                ));
+                return false;
+            }
+            YamlConfiguration config = new YamlConfiguration();
+            config.set("id", normalized);
+            config.set("enabled", true);
+            config.set("display-name", displayName == null || displayName.isBlank() ? title(normalized) : displayName);
+            config.set("description", List.of("&7New collection."));
+            config.set("display-item.material", material.name());
+            config.set("menu-slot", -1);
+            Map<String, Object> source = new LinkedHashMap<>();
+            source.put("type", "BLOCK_BREAK");
+            source.put("materials", List.of(material.name()));
+            config.set("sources", List.of(source));
+            config.set("tiers", List.of(tierMap("I", 50), tierMap("II", 100), tierMap("III", 500)));
+            config.save(file);
+            return true;
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public boolean deleteCollection(String id) throws IOException {
-        File file = fileFor(id);
-        if (file == null || !file.exists()) {
-            plugin.diagnostics().debug("commands", "Delete collection rejected", DiagnosticService.fields("collection", id, "reason", "unknown_collection"));
-            return false;
+        lock.writeLock().lock();
+        try {
+            File file = filesById.get(normalizeId(id));
+            if (file == null || !file.exists()) {
+                plugin.diagnostics().debug("commands", "Delete collection rejected", DiagnosticService.fields("collection", id, "reason", "unknown_collection"));
+                return false;
+            }
+            File deletedFolder = new File(collectionsFolder, "deleted");
+            if (!deletedFolder.exists() && !deletedFolder.mkdirs()) {
+                throw new IOException("Could not create deleted folder.");
+            }
+            File target = new File(deletedFolder, file.getName() + "." + System.currentTimeMillis() + ".bak");
+            if (!file.renameTo(target)) {
+                throw new IOException("Could not move collection to " + target.getName());
+            }
+            return true;
+        } finally {
+            lock.writeLock().unlock();
         }
-        File deletedFolder = new File(collectionsFolder, "deleted");
-        if (!deletedFolder.exists() && !deletedFolder.mkdirs()) {
-            throw new IOException("Could not create deleted folder.");
-        }
-        File target = new File(deletedFolder, file.getName() + "." + System.currentTimeMillis() + ".bak");
-        if (!file.renameTo(target)) {
-            throw new IOException("Could not move collection to " + target.getName());
-        }
-        return true;
     }
 
     public boolean addTier(String collectionId, String tierId, long goal) throws IOException {
-        File file = fileFor(collectionId);
-        if (file == null) {
-            return false;
-        }
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-        List<Map<?, ?>> tiers = new ArrayList<>(config.getMapList("tiers"));
-        for (Map<?, ?> tier : tiers) {
-            if (tierId.equalsIgnoreCase(String.valueOf(tier.get("id")))) {
+        lock.writeLock().lock();
+        try {
+            File file = filesById.get(normalizeId(collectionId));
+            if (file == null || !validTierId(tierId) || goal <= 0) {
                 return false;
             }
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            List<Map<?, ?>> tiers = new ArrayList<>(config.getMapList("tiers"));
+            long highestGoal = 0;
+            for (Map<?, ?> tier : tiers) {
+                if (tierId.equalsIgnoreCase(String.valueOf(tier.get("id")))) {
+                    return false;
+                }
+                highestGoal = Math.max(highestGoal, longValue(tier.get("goal"), 0));
+            }
+            if (goal <= highestGoal) {
+                return false;
+            }
+            tiers.add(tierMap(tierId, goal));
+            config.set("tiers", tiers);
+            config.save(file);
+            return true;
+        } finally {
+            lock.writeLock().unlock();
         }
-        tiers.add(tierMap(tierId, goal));
-        config.set("tiers", tiers);
-        config.save(file);
-        return true;
     }
 
     public boolean addSource(String collectionId, CollectionSourceType type, String key) throws IOException {
-        File file = fileFor(collectionId);
-        if (file == null) {
-            return false;
+        lock.writeLock().lock();
+        try {
+            if (type == null) {
+                return false;
+            }
+            String safeKey = key == null ? "" : key.trim();
+            if (type != CollectionSourceType.MANUAL && safeKey.isBlank()) {
+                return false;
+            }
+            File file = filesById.get(normalizeId(collectionId));
+            if (file == null) {
+                return false;
+            }
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            List<Map<?, ?>> sources = new ArrayList<>(config.getMapList("sources"));
+            Map<String, Object> source = new LinkedHashMap<>();
+            source.put("type", type.name());
+            if (type == CollectionSourceType.ENTITY_KILL) {
+                source.put("entities", List.of(safeKey.toUpperCase(Locale.ROOT)));
+            } else if (type != CollectionSourceType.MANUAL) {
+                source.put("materials", List.of(safeKey.toUpperCase(Locale.ROOT)));
+            }
+            sources.add(source);
+            config.set("sources", sources);
+            config.save(file);
+            return true;
+        } finally {
+            lock.writeLock().unlock();
         }
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-        List<Map<?, ?>> sources = new ArrayList<>(config.getMapList("sources"));
-        Map<String, Object> source = new LinkedHashMap<>();
-        source.put("type", type.name());
-        if (type == CollectionSourceType.ENTITY_KILL) {
-            source.put("entities", List.of(key.toUpperCase(Locale.ROOT)));
-        } else if (type != CollectionSourceType.MANUAL) {
-            source.put("materials", List.of(key.toUpperCase(Locale.ROOT)));
-        }
-        sources.add(source);
-        config.set("sources", sources);
-        config.save(file);
-        return true;
     }
 
     public boolean addCommandReward(String collectionId, String tierId, String sender, String command) throws IOException {
-        File file = fileFor(collectionId);
-        if (file == null) {
-            return false;
-        }
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-        List<Map<?, ?>> tiers = new ArrayList<>(config.getMapList("tiers"));
-        boolean changed = false;
-        for (int index = 0; index < tiers.size(); index++) {
-            Map<?, ?> rawTier = tiers.get(index);
-            Map<String, Object> tier = mutable(rawTier);
-            if (!tierId.equalsIgnoreCase(String.valueOf(tier.get("id")))) {
-                continue;
+        lock.writeLock().lock();
+        try {
+            if (sender == null || command == null || command.isBlank()) {
+                return false;
             }
-            List<Map<?, ?>> rewards = new ArrayList<>();
-            Object existing = tier.get("rewards");
-            if (existing instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> map) {
-                        rewards.add(map);
+            File file = filesById.get(normalizeId(collectionId));
+            if (file == null) {
+                return false;
+            }
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            List<Map<?, ?>> tiers = new ArrayList<>(config.getMapList("tiers"));
+            boolean changed = false;
+            for (int index = 0; index < tiers.size(); index++) {
+                Map<?, ?> rawTier = tiers.get(index);
+                Map<String, Object> tier = mutable(rawTier);
+                if (!tierId.equalsIgnoreCase(String.valueOf(tier.get("id")))) {
+                    continue;
+                }
+                List<Map<?, ?>> rewards = new ArrayList<>();
+                Object existing = tier.get("rewards");
+                if (existing instanceof List<?> list) {
+                    for (Object item : list) {
+                        if (item instanceof Map<?, ?> map) {
+                            rewards.add(map);
+                        }
                     }
                 }
+                Map<String, Object> reward = new LinkedHashMap<>();
+                reward.put("type", RewardType.COMMAND.name());
+                reward.put("sender", sender.toUpperCase(Locale.ROOT));
+                reward.put("command", command);
+                rewards.add(reward);
+                tier.put("rewards", rewards);
+                tiers.set(index, tier);
+                changed = true;
+                break;
             }
-            Map<String, Object> reward = new LinkedHashMap<>();
-            reward.put("type", RewardType.COMMAND.name());
-            reward.put("sender", sender.toUpperCase(Locale.ROOT));
-            reward.put("command", command);
-            rewards.add(reward);
-            tier.put("rewards", rewards);
-            tiers.set(index, tier);
-            changed = true;
-            break;
+            if (!changed) {
+                return false;
+            }
+            config.set("tiers", tiers);
+            config.save(file);
+            return true;
+        } finally {
+            lock.writeLock().unlock();
         }
-        if (!changed) {
-            return false;
-        }
-        config.set("tiers", tiers);
-        config.save(file);
-        return true;
     }
 
     private Optional<CollectionDefinition> parseFile(File file, List<String> issues) {
         YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
         String id = normalizeId(config.getString("id", file.getName().replaceFirst("\\.ya?ml$", "")));
-        if (!id.matches(ID_PATTERN)) {
-            issues.add(file.getName() + ": invalid id '" + id + "'. Use lowercase letters, numbers, _ or -.");
+        if (!validId(id)) {
+            issues.add(file.getName() + ": invalid id '" + id + "'. Use 1-64 lowercase letters, numbers, _ or -.");
             return Optional.empty();
         }
         if (collections.containsKey(id)) {
@@ -289,7 +401,7 @@ public final class CollectionRegistry {
         for (Map<?, ?> tierMap : config.getMapList("tiers")) {
             String tierId = string(tierMap, "id", "").trim();
             long goal = longValue(tierMap.get("goal"), -1);
-            if (tierId.isBlank() || goal <= 0) {
+            if (!validTierId(tierId) || goal <= 0) {
                 issues.add(file.getName() + ": skipped tier with invalid id or goal.");
                 continue;
             }
@@ -543,6 +655,14 @@ public final class CollectionRegistry {
 
     private static String normalizeId(String id) {
         return id == null ? "" : id.toLowerCase(Locale.ROOT).trim();
+    }
+
+    private static boolean validId(String id) {
+        return id != null && !id.isBlank() && id.length() <= MAX_ID_LENGTH && id.matches(ID_PATTERN);
+    }
+
+    private static boolean validTierId(String id) {
+        return id != null && !id.isBlank() && id.length() <= MAX_ID_LENGTH && id.matches(TIER_ID_PATTERN);
     }
 
     private static String title(String id) {

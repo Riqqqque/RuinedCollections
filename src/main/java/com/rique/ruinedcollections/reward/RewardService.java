@@ -8,6 +8,7 @@ import com.rique.ruinedcollections.storage.PlayerProgressSession;
 import com.rique.ruinedcollections.util.Longs;
 import com.rique.ruinedcollections.util.Text;
 import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import java.util.HashMap;
@@ -133,17 +134,33 @@ public final class RewardService {
         }
         boolean dispatched;
         if ("PLAYER".equalsIgnoreCase(reward.sender())) {
-            dispatched = Bukkit.dispatchCommand(player, command);
+            dispatched = dispatch(player, command);
         } else {
-            dispatched = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+            String finalCommand = command;
+            plugin.scheduler().runGlobal(() -> dispatch(Bukkit.getConsoleSender(), finalCommand, player, reward));
+            return;
         }
         if (!dispatched) {
-            plugin.diagnostics().warn("rewards", "Reward command was not handled", DiagnosticService.fields(
-                    "player", player.getName(),
-                    "uuid", player.getUniqueId(),
-                    "sender", reward.sender(),
-                    "command", command
-            ));
+            logUnhandled(player, reward, command);
         }
+    }
+
+    private void dispatch(CommandSender sender, String command, Player player, RewardAction reward) {
+        if (!dispatch(sender, command)) {
+            logUnhandled(player, reward, command);
+        }
+    }
+
+    private boolean dispatch(CommandSender sender, String command) {
+        return Bukkit.dispatchCommand(sender, command);
+    }
+
+    private void logUnhandled(Player player, RewardAction reward, String command) {
+        plugin.diagnostics().warn("rewards", "Reward command was not handled", DiagnosticService.fields(
+                "player", player.getName(),
+                "uuid", player.getUniqueId(),
+                "sender", reward.sender(),
+                "command", command
+        ));
     }
 }

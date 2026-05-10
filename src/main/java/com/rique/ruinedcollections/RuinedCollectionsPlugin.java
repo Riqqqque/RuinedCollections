@@ -41,6 +41,7 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
     private LeaderboardService leaderboards;
     private SchedulerAdapter scheduler;
     private ServerCompatibility compatibility;
+    private TrackingFilter trackingFilter;
 
     @Override
     public void onEnable() {
@@ -103,6 +104,9 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         if (leaderboards != null) {
             leaderboards.stop();
         }
+        if (snapshots != null) {
+            snapshots.close();
+        }
         if (scheduler != null) {
             scheduler.shutdown();
         }
@@ -125,6 +129,9 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         }
         List<String> issues = collectionRegistry.load();
         menuService.load();
+        if (trackingFilter != null) {
+            trackingFilter.load();
+        }
         if (progressService != null) {
             progressService.recheckOnlineRewards();
         }
@@ -186,11 +193,11 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
     }
 
     private void registerListeners() {
-        TrackingFilter filter = new TrackingFilter(this);
+        trackingFilter = new TrackingFilter(this);
         getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this), this);
-        getServer().getPluginManager().registerEvents(new BlockCollectionListener(this, filter), this);
-        getServer().getPluginManager().registerEvents(new EntityKillCollectionListener(this, filter), this);
-        getServer().getPluginManager().registerEvents(new ItemCollectionListener(this, filter), this);
+        getServer().getPluginManager().registerEvents(new BlockCollectionListener(this, trackingFilter), this);
+        getServer().getPluginManager().registerEvents(new EntityKillCollectionListener(this, trackingFilter), this);
+        getServer().getPluginManager().registerEvents(new ItemCollectionListener(this, trackingFilter), this);
         getServer().getPluginManager().registerEvents(menuService, this);
     }
 

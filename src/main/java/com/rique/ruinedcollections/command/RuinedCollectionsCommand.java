@@ -394,14 +394,28 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             ));
             return;
         }
-        ImportPreview preview = plugin.snapshots().preview(file);
         boolean apply = args.length >= 3 && "--apply".equalsIgnoreCase(args[2]);
-        if (!apply) {
-            sender.sendMessage(color("&eImport preview: &f" + preview.progressRows().size() + " &eprogress rows, &f"
-                    + preview.claimedRows().size() + " &eclaimed tiers, &f"
-                    + preview.playerNames().size() + " &eplayer names. Run with --apply to import."));
-            return;
-        }
+        plugin.snapshots().previewAsync(file).whenComplete((preview, previewError) ->
+                plugin.scheduler().runSender(sender, () -> {
+                    if (previewError != null) {
+                        plugin.diagnostics().error("import", "Import preview failed", DiagnosticService.fields(
+                                "sender", sender.getName(),
+                                "file", file.getAbsolutePath()
+                        ), previewError);
+                        sender.sendMessage(color("&cImport preview failed: " + previewError.getMessage()));
+                        return;
+                    }
+                    if (!apply) {
+                        sender.sendMessage(color("&eImport preview: &f" + preview.progressRows().size() + " &eprogress rows, &f"
+                                + preview.claimedRows().size() + " &eclaimed tiers, &f"
+                                + preview.playerNames().size() + " &eplayer names. Run with --apply to import."));
+                        return;
+                    }
+                    applyImport(sender, file, preview);
+                }));
+    }
+
+    private void applyImport(CommandSender sender, File file, ImportPreview preview) {
         plugin.snapshots().apply(preview).whenComplete((ignored, throwable) ->
                 plugin.scheduler().runSender(sender, () -> {
                     if (throwable != null) {

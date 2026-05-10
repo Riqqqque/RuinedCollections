@@ -92,23 +92,28 @@ public final class CollectionRepository {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             connection.setAutoCommit(false);
-            for (Map.Entry<ProgressKey, Long> entry : progress.entrySet()) {
-                long amount = Math.max(0, entry.getValue());
-                if (amount == 0) {
-                    continue;
+            try {
+                for (Map.Entry<ProgressKey, Long> entry : progress.entrySet()) {
+                    long amount = Math.max(0, entry.getValue());
+                    if (amount == 0) {
+                        continue;
+                    }
+                    statement.setString(1, entry.getKey().playerId().toString());
+                    statement.setString(2, entry.getKey().collectionId());
+                    statement.setLong(3, amount);
+                    statement.setLong(4, now);
+                    statement.setLong(5, Long.MAX_VALUE - amount);
+                    statement.setLong(6, Long.MAX_VALUE);
+                    statement.setLong(7, amount);
+                    statement.setLong(8, now);
+                    statement.addBatch();
                 }
-                statement.setString(1, entry.getKey().playerId().toString());
-                statement.setString(2, entry.getKey().collectionId());
-                statement.setLong(3, amount);
-                statement.setLong(4, now);
-                statement.setLong(5, Long.MAX_VALUE - amount);
-                statement.setLong(6, Long.MAX_VALUE);
-                statement.setLong(7, amount);
-                statement.setLong(8, now);
-                statement.addBatch();
+                statement.executeBatch();
+                connection.commit();
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
             }
-            statement.executeBatch();
-            connection.commit();
         }
     }
 

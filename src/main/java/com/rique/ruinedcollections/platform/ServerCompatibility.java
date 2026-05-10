@@ -12,7 +12,7 @@ public final class ServerCompatibility {
 
     private static final MinecraftVersion MINIMUM = new MinecraftVersion(1, 21, 0);
     private static final MinecraftVersion MAXIMUM = new MinecraftVersion(26, 1, 2);
-    private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?");
+    private static final Pattern VERSION_PATTERN = Pattern.compile("^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?(?:[-+].*)?$");
 
     private final String serverName;
     private final String minecraftVersion;
@@ -142,8 +142,8 @@ public final class ServerCompatibility {
             if (value == null) {
                 return null;
             }
-            Matcher matcher = VERSION_PATTERN.matcher(value);
-            if (!matcher.find()) {
+            Matcher matcher = VERSION_PATTERN.matcher(value.trim());
+            if (!matcher.matches()) {
                 return null;
             }
             return new MinecraftVersion(

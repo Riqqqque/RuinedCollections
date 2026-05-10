@@ -30,7 +30,7 @@ import java.util.Set;
 
 public final class MenuService implements Listener {
     private final RuinedCollectionsPlugin plugin;
-    private YamlConfiguration config;
+    private volatile YamlConfiguration config;
 
     public MenuService(RuinedCollectionsPlugin plugin) {
         this.plugin = plugin;
@@ -77,8 +77,14 @@ public final class MenuService implements Listener {
     }
 
     public void openDetail(Player player, CollectionDefinition collection) {
+        openDetail(player, collection, 0);
+    }
+
+    public void openDetail(Player player, CollectionDefinition collection, int page) {
         int size = validSize(config.getInt("detail.size", 54));
-        DetailMenuHolder holder = new DetailMenuHolder(collection.id());
+        int[] contentSlots = contentSlots(size);
+        int safePage = Math.max(0, page);
+        DetailMenuHolder holder = new DetailMenuHolder(collection.id(), safePage);
         String title = plugin.getConfig().getString("menus.detail-title", "&8%collection%")
                 .replace("%collection%", Text.color(collection.displayName()));
         Inventory inventory = Bukkit.createInventory(holder, size, Text.component(title));
@@ -86,10 +92,20 @@ public final class MenuService implements Listener {
         fill(inventory, "detail.filler");
 
         long progress = plugin.progressService().cachedProgress(player.getUniqueId(), collection.id());
-        int[] contentSlots = contentSlots(size);
-        for (int i = 0; i < collection.tiers().size() && i < contentSlots.length; i++) {
-            CollectionTier tier = collection.tiers().get(i);
+        int start = safePage * contentSlots.length;
+        for (int i = 0; i < contentSlots.length; i++) {
+            int tierIndex = start + i;
+            if (tierIndex >= collection.tiers().size()) {
+                break;
+            }
+            CollectionTier tier = collection.tiers().get(tierIndex);
             inventory.setItem(contentSlots[i], tierItem(player, collection, tier, progress));
+        }
+        if (safePage > 0) {
+            inventory.setItem(previousSlot(size), simpleItem(material(plugin.getConfig().getString("menus.previous-item", "ARROW"), Material.ARROW), "&ePrevious"));
+        }
+        if (start + contentSlots.length < collection.tiers().size()) {
+            inventory.setItem(nextSlot(size), simpleItem(material(plugin.getConfig().getString("menus.next-item", "ARROW"), Material.ARROW), "&eNext"));
         }
         inventory.setItem(backSlot(size), simpleItem(material(plugin.getConfig().getString("menus.back-item", "BARRIER"), Material.BARRIER), "&cBack"));
         player.openInventory(inventory);
@@ -100,25 +116,42 @@ public final class MenuService implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
-        if (event.getInventory().getHolder() instanceof MainMenuHolder holder) {
+        Inventory top = event.getView().getTopInventory();
+        int rawSlot = event.getRawSlot();
+        if (top.getHolder() instanceof MainMenuHolder holder) {
             event.setCancelled(true);
-            int size = event.getInventory().getSize();
-            if (event.getRawSlot() == previousSlot(size) && holder.page() > 0) {
-                openMain(player, holder.page() - 1);
+            int size = top.getSize();
+            if (rawSlot == previousSlot(size) && holder.page() > 0) {
+                plugin.scheduler().runPlayer(player, () -> openMain(player, holder.page() - 1));
                 return;
             }
-            if (event.getRawSlot() == nextSlot(size)) {
-                openMain(player, holder.page() + 1);
+            if (rawSlot == nextSlot(size) && hasMainNext(holder.page(), size)) {
+                plugin.scheduler().runPlayer(player, () -> openMain(player, holder.page() + 1));
                 return;
             }
-            String collectionId = holder.collectionAt(event.getRawSlot());
+            if (rawSlot < 0 || rawSlot >= size) {
+                return;
+            }
+            String collectionId = holder.collectionAt(rawSlot);
             if (collectionId != null) {
-                plugin.collectionRegistry().get(collectionId).ifPresent(collection -> openDetail(player, collection));
+                plugin.collectionRegistry().get(collectionId)
+                        .ifPresent(collection -> plugin.scheduler().runPlayer(player, () -> openDetail(player, collection)));
             }
-        } else if (event.getInventory().getHolder() instanceof DetailMenuHolder) {
+        } else if (top.getHolder() instanceof DetailMenuHolder holder) {
             event.setCancelled(true);
-            if (event.getRawSlot() == backSlot(event.getInventory().getSize())) {
-                openMain(player, 0);
+            int size = top.getSize();
+            if (rawSlot == previousSlot(size) && holder.page() > 0) {
+                plugin.collectionRegistry().get(holder.collectionId())
+                        .ifPresent(collection -> plugin.scheduler().runPlayer(player, () -> openDetail(player, collection, holder.page() - 1)));
+                return;
+            }
+            if (rawSlot == nextSlot(size) && hasDetailNext(holder, size)) {
+                plugin.collectionRegistry().get(holder.collectionId())
+                        .ifPresent(collection -> plugin.scheduler().runPlayer(player, () -> openDetail(player, collection, holder.page() + 1)));
+                return;
+            }
+            if (rawSlot == backSlot(size)) {
+                plugin.scheduler().runPlayer(player, () -> openMain(player, 0));
             }
         }
     }
@@ -179,6 +212,7 @@ public final class MenuService implements Listener {
         return item;
     }
 
+    @SuppressWarnings("deprecation")
     private ItemStack displayItem(DisplayItem displayItem) {
         ItemStack item = new ItemStack(displayItem.material());
         if (displayItem.customModelData() != null) {
@@ -259,6 +293,18 @@ public final class MenuService implements Listener {
 
     private boolean isControlSlot(int slot, int size) {
         return slot == previousSlot(size) || slot == backSlot(size) || slot == nextSlot(size);
+    }
+
+    private boolean hasMainNext(int page, int size) {
+        int nextStart = (page + 1) * contentSlots(size).length;
+        return nextStart < plugin.collectionRegistry().enabledCollections().size();
+    }
+
+    private boolean hasDetailNext(DetailMenuHolder holder, int size) {
+        int nextStart = (holder.page() + 1) * contentSlots(size).length;
+        return plugin.collectionRegistry().get(holder.collectionId())
+                .map(collection -> nextStart < collection.tiers().size())
+                .orElse(false);
     }
 
     private int previousSlot(int size) {

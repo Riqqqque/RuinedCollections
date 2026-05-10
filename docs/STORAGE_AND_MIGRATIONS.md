@@ -25,6 +25,10 @@ storage:
   table-prefix: rc_
 ```
 
+Prefixes may use lowercase letters, numbers, and underscores. Existing valid prefixes are preserved; migration index names are shortened separately when needed so long prefixes do not rename data tables.
+
+The plugin creates leaderboard and rank indexes for `player_progress` during startup. SQLite also uses WAL mode and a busy timeout to reduce lock errors under normal server load.
+
 ## Player Progress
 
 Progress is stored by player UUID and collection id.
@@ -103,6 +107,8 @@ Exports include:
 
 Preview mode shows how many rows will be imported.
 
+Preview work runs off the server thread and validates UUIDs, collection ids, and claimed tier ids before anything is applied. Invalid rows are skipped and written to diagnostics.
+
 ## Import Apply
 
 ```text
@@ -110,6 +116,8 @@ Preview mode shows how many rows will be imported.
 ```
 
 Import sets progress to the values in the file and inserts claimed tiers if missing.
+
+Online players touched by an import are refreshed after the import finishes so menus and placeholders do not keep stale cached progress.
 
 ## Migration Design
 

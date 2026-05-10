@@ -6,21 +6,40 @@ import org.bukkit.GameMode;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class TrackingFilter {
     private final RuinedCollectionsPlugin plugin;
+    private volatile boolean ignoreCreative;
+    private volatile boolean ignoreSpectator;
+    private volatile boolean ignorePlayerPlacedBlocks;
+    private volatile Set<String> enabledWorlds = Set.of();
+    private volatile Set<String> disabledWorlds = Set.of();
 
     public TrackingFilter(RuinedCollectionsPlugin plugin) {
         this.plugin = plugin;
+        load();
+    }
+
+    public void load() {
+        ignoreCreative = plugin.getConfig().getBoolean("tracking.ignore-creative", true);
+        ignoreSpectator = plugin.getConfig().getBoolean("tracking.ignore-spectator", true);
+        ignorePlayerPlacedBlocks = plugin.getConfig().getBoolean("tracking.ignore-player-placed-blocks", true);
+        enabledWorlds = Set.copyOf(new HashSet<>(plugin.getConfig().getStringList("tracking.enabled-worlds")));
+        disabledWorlds = Set.copyOf(new HashSet<>(plugin.getConfig().getStringList("tracking.disabled-worlds")));
+    }
+
+    public boolean ignorePlayerPlacedBlocks() {
+        return ignorePlayerPlacedBlocks;
     }
 
     public boolean blocked(Player player) {
-        if (plugin.getConfig().getBoolean("tracking.ignore-creative", true) && player.getGameMode() == GameMode.CREATIVE) {
+        if (ignoreCreative && player.getGameMode() == GameMode.CREATIVE) {
             debugPlayer(player, "creative_mode");
             return true;
         }
-        if (plugin.getConfig().getBoolean("tracking.ignore-spectator", true) && player.getGameMode() == GameMode.SPECTATOR) {
+        if (ignoreSpectator && player.getGameMode() == GameMode.SPECTATOR) {
             debugPlayer(player, "spectator_mode");
             return true;
         }
@@ -32,12 +51,12 @@ public final class TrackingFilter {
     }
 
     public boolean blockedWorld(World world) {
-        List<String> enabledWorlds = plugin.getConfig().getStringList("tracking.enabled-worlds");
-        if (!enabledWorlds.isEmpty() && !enabledWorlds.contains(world.getName())) {
+        Set<String> enabled = enabledWorlds;
+        if (!enabled.isEmpty() && !enabled.contains(world.getName())) {
             debugWorld(world, "not_in_enabled_worlds");
             return true;
         }
-        boolean blocked = plugin.getConfig().getStringList("tracking.disabled-worlds").contains(world.getName());
+        boolean blocked = disabledWorlds.contains(world.getName());
         if (blocked) {
             debugWorld(world, "disabled_world");
         }

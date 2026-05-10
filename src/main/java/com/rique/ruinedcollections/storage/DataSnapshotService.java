@@ -10,12 +10,25 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public final class DataSnapshotService {
+    private static final String ID_PATTERN = "[a-z0-9_-]+";
+    private static final String TIER_PATTERN = "[A-Za-z0-9_-]+";
+    private static final int MAX_ID_LENGTH = 64;
+
     private final RuinedCollectionsPlugin plugin;
     private final CollectionRepository repository;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "RuinedCollections-Snapshots");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public DataSnapshotService(RuinedCollectionsPlugin plugin, CollectionRepository repository) {
         this.plugin = plugin;
@@ -93,14 +106,34 @@ public final class DataSnapshotService {
                 continue;
             }
             for (String collectionId : collections.getKeys(false)) {
+                String normalizedCollection = normalizeCollectionId(collectionId);
+                if (!validCollectionId(normalizedCollection)) {
+                    plugin.diagnostics().warn("import", "Skipped invalid collection id in import", DiagnosticService.fields(
+                            "uuid", playerId,
+                            "collection", collectionId
+                    ));
+                    continue;
+                }
                 long progress = Math.max(0, collections.getLong(collectionId + ".progress", 0));
-                progressRows.add(new ProgressRow(playerId, collectionId, progress));
+                progressRows.add(new ProgressRow(playerId, normalizedCollection, progress));
                 for (String tierId : collections.getStringList(collectionId + ".claimed-tiers")) {
-                    claimedRows.add(new ClaimedRow(playerId, collectionId, tierId));
+                    if (!validTierId(tierId)) {
+                        plugin.diagnostics().warn("import", "Skipped invalid claimed tier in import", DiagnosticService.fields(
+                                "uuid", playerId,
+                                "collection", normalizedCollection,
+                                "tier", tierId
+                        ));
+                        continue;
+                    }
+                    claimedRows.add(new ClaimedRow(playerId, normalizedCollection, tierId));
                 }
             }
         }
         return new ImportPreview(progressRows, claimedRows, playerNames);
+    }
+
+    public CompletableFuture<ImportPreview> previewAsync(File file) {
+        return CompletableFuture.supplyAsync(() -> preview(file), executor);
     }
 
     public CompletableFuture<Void> apply(ImportPreview preview) {
@@ -110,5 +143,33 @@ public final class DataSnapshotService {
                 "playerNames", preview.playerNames().size()
         ));
         return repository.applySnapshot(preview.progressRows(), preview.claimedRows(), preview.playerNames());
+    }
+
+    public void close() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            executor.shutdownNow();
+        }
+    }
+
+    private String normalizeCollectionId(String collectionId) {
+        return collectionId == null ? "" : collectionId.toLowerCase(Locale.ROOT).trim();
+    }
+
+    private boolean validCollectionId(String collectionId) {
+        return collectionId != null && !collectionId.isBlank()
+                && collectionId.length() <= MAX_ID_LENGTH
+                && collectionId.matches(ID_PATTERN);
+    }
+
+    private boolean validTierId(String tierId) {
+        return tierId != null && !tierId.isBlank()
+                && tierId.length() <= MAX_ID_LENGTH
+                && tierId.matches(TIER_PATTERN);
     }
 }

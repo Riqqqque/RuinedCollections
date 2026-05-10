@@ -14,6 +14,8 @@ import java.sql.Statement;
 import java.util.Locale;
 
 public final class DatabaseManager {
+    private static final int MAX_INDEX_NAME_LENGTH = 60;
+
     private HikariDataSource dataSource;
     private StorageType storageType;
     private String tablePrefix;
@@ -27,8 +29,13 @@ public final class DatabaseManager {
         hikari.setPoolName("RuinedCollections-" + storageType.name());
         if (storageType == StorageType.SQLITE) {
             File dbFile = new File(plugin.getDataFolder(), config.getString("storage.sqlite.file", "data.db"));
+            File parent = dbFile.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                throw new SQLException("Could not create SQLite folder " + parent.getAbsolutePath());
+            }
             hikari.setJdbcUrl("jdbc:sqlite:" + dbFile.getAbsolutePath());
             hikari.setMaximumPoolSize(1);
+            hikari.setConnectionInitSql("PRAGMA busy_timeout=5000");
         } else {
             String host = config.getString("storage.mysql.host", "localhost");
             int port = config.getInt("storage.mysql.port", 3306);
@@ -113,7 +120,41 @@ public final class DatabaseManager {
             if (schemaVersion < 2) {
                 statement.executeUpdate("UPDATE " + tablePrefix + "schema SET version=2");
             }
+            createIndexes(statement);
         }
+    }
+
+    private void createIndexes(Statement statement) throws SQLException {
+        createIndex(statement, indexName("progress_collection_idx"),
+                tablePrefix + "player_progress", "collection_id, progress");
+        createIndex(statement, indexName("progress_updated_idx"),
+                tablePrefix + "player_progress", "updated_at");
+    }
+
+    private void createIndex(Statement statement, String name, String table, String columns) throws SQLException {
+        String sql = storageType == StorageType.SQLITE
+                ? "CREATE INDEX IF NOT EXISTS " + name + " ON " + table + " (" + columns + ")"
+                : "CREATE INDEX " + name + " ON " + table + " (" + columns + ")";
+        try {
+            statement.execute(sql);
+        } catch (SQLException exception) {
+            if (storageType == StorageType.MYSQL && duplicateIndex(exception)) {
+                return;
+            }
+            throw exception;
+        }
+    }
+
+    private boolean duplicateIndex(SQLException exception) {
+        return exception.getErrorCode() == 1061;
+    }
+
+    private String indexName(String suffix) {
+        String name = tablePrefix + suffix;
+        if (name.length() <= MAX_INDEX_NAME_LENGTH) {
+            return name;
+        }
+        return "rc_" + Integer.toHexString(tablePrefix.hashCode()).replace("-", "n") + "_" + suffix;
     }
 
     private int schemaVersion(Statement statement) throws SQLException {
@@ -124,6 +165,9 @@ public final class DatabaseManager {
 
     private String sanitizePrefix(String prefix) {
         String value = prefix == null ? "rc_" : prefix.toLowerCase(Locale.ROOT);
-        return value.matches("[a-z0-9_]+") ? value : "rc_";
+        if (!value.matches("[a-z0-9_]+")) {
+            return "rc_";
+        }
+        return value;
     }
 }
