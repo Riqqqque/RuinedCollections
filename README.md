@@ -116,6 +116,23 @@ The compiled plugin jar is created at:
 target/RuinedCollections.jar
 ```
 
+## Release
+
+Future releases are tag-driven. The GitHub workflow builds the jar, checks the supported Paper API, uploads the jar to GitHub Releases, and publishes the same jar to Hangar and Modrinth when the repo secrets are present.
+
+From a clean working tree:
+
+```powershell
+.\scripts\release.ps1 1.0.13
+```
+
+Required GitHub Actions secrets:
+
+```text
+HANGAR_API_TOKEN
+MODRINTH_TOKEN
+```
+
 ## License
 
 RuinedCollections is free to use on personal servers, private servers, public servers, and monetized Minecraft servers.
