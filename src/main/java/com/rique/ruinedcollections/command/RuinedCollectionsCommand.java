@@ -143,7 +143,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         }
         Optional<CollectionDefinition> collection = plugin.collectionRegistry().get(args[1]);
         if (collection.isEmpty()) {
-            sender.sendMessage(color(plugin.getConfig().getString("messages.invalid-collection").replace("%collection%", args[1])));
+            sender.sendMessage(color(message("messages.invalid-collection", "&cUnknown collection: &f%collection%").replace("%collection%", args[1])));
             return;
         }
         CollectionDefinition value = collection.get();
@@ -191,7 +191,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         }
         rememberPlayerName(player);
         plugin.progressService().addManual(player.getUniqueId(), collection.get().id(), amount);
-        sender.sendMessage(color(plugin.getConfig().getString("messages.progress-added")
+        sender.sendMessage(color(message("messages.progress-added", "&aAdded &f%amount% &ato &f%player%&a in &f%collection%&a.")
                 .replace("%amount%", Longs.format(amount))
                 .replace("%player%", args[1])
                 .replace("%collection%", collection.get().id())));
@@ -216,7 +216,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         }
         rememberPlayerName(player);
         plugin.progressService().setProgress(player.getUniqueId(), collection.get().id(), amount);
-        sender.sendMessage(color(plugin.getConfig().getString("messages.progress-set")
+        sender.sendMessage(color(message("messages.progress-set", "&aSet &f%player%&a to &f%amount%&a in &f%collection%&a.")
                 .replace("%amount%", Longs.format(amount))
                 .replace("%player%", args[1])
                 .replace("%collection%", collection.get().id())));
@@ -240,7 +240,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
         }
         rememberPlayerName(player);
         plugin.progressService().setProgress(player.getUniqueId(), collection.get().id(), 0);
-        sender.sendMessage(color(plugin.getConfig().getString("messages.progress-reset")
+        sender.sendMessage(color(message("messages.progress-reset", "&aReset &f%player%&a in &f%collection%&a.")
                 .replace("%player%", args[1])
                 .replace("%collection%", collection.get().id())));
     }
@@ -434,6 +434,7 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
                             .filter(player -> player != null && player.isOnline())
                             .distinct()
                             .forEach(player -> plugin.scheduler().runPlayer(player, () -> plugin.progressService().refresh(player))));
+                    plugin.leaderboards().refreshAll();
                     sender.sendMessage(color("&aImported data."));
                 }));
     }
@@ -511,6 +512,10 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
 
     private String color(String text) {
         return Text.color(plugin.messagePrefix() + text);
+    }
+
+    private String message(String path, String fallback) {
+        return plugin.getConfig().getString(path, fallback);
     }
 
     @Override

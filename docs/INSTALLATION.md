@@ -7,7 +7,7 @@ This page covers the normal install path, first boot, and the checks worth doing
 | Requirement | Notes |
 | --- | --- |
 | Paper or Folia | `1.21` through `26.1.2` |
-| Java | `21+` |
+| Java | The plugin jar targets Java `21` bytecode. Use the Java version required by your Paper/Folia server version; Paper/Folia `26.1+` requires Java `25`. |
 | PlaceholderAPI | Optional, for placeholders |
 | Vault | Optional, for economy rewards |
 | Economy plugin | Optional, required only if using Vault economy rewards |

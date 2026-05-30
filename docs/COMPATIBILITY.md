@@ -11,20 +11,21 @@ RuinedCollections is built for Paper/Folia servers from the `1.21` line through 
 
 | Requirement | Value |
 | --- | --- |
-| Java | `21+` |
+| Plugin Java bytecode | `21` |
+| Server Java | Use the Java version required by your Paper/Folia server version. Paper/Folia `26.1+` requires Java `25`. |
 | Release API baseline | Paper `1.21-R0.1-SNAPSHOT` |
-| Latest API check | Paper `26.1.2.build.61-stable` |
+| Latest API check | Paper `26.1.2.build.66-stable` |
 | `plugin.yml` API version | `1.21` |
 | Folia metadata | `folia-supported: true` |
 
-The release jar is intentionally compiled against the Paper `1.21` API. That keeps the code from accidentally relying on newer API methods that would break older supported servers.
+The release jar is intentionally compiled against the Paper `1.21` API and Java `21` bytecode. That keeps the code from accidentally relying on newer API methods that would break older supported servers. The server itself still needs the Java runtime required by that Paper/Folia version.
 
 Paper and Minecraft now use the newer year/drop version format for current releases, which is why `26.1.2` is part of the supported range instead of a typo.
 
 To compile-check the code against the latest Paper API without changing the release baseline:
 
 ```powershell
-mvn "-Dpaper.api.version=26.1.2.build.61-stable" -DskipTests compile
+mvn "-Dpaper.api.version=26.1.2.build.66-stable" -DskipTests compile
 ```
 
 ## Startup Check

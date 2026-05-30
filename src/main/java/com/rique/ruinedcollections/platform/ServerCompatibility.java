@@ -146,11 +146,15 @@ public final class ServerCompatibility {
             if (!matcher.matches()) {
                 return null;
             }
-            return new MinecraftVersion(
-                    parsePart(matcher.group(1)),
-                    parsePart(matcher.group(2)),
-                    parsePart(matcher.group(3))
-            );
+            try {
+                return new MinecraftVersion(
+                        parsePart(matcher.group(1)),
+                        parsePart(matcher.group(2)),
+                        parsePart(matcher.group(3))
+                );
+            } catch (NumberFormatException exception) {
+                return null;
+            }
         }
 
         private static int parsePart(String value) {

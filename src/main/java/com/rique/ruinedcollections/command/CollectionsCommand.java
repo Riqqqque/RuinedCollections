@@ -18,11 +18,11 @@ public final class CollectionsCommand implements CommandExecutor {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(Text.color(plugin.messagePrefix() + plugin.getConfig().getString("messages.player-only")));
+            sender.sendMessage(Text.color(plugin.messagePrefix() + plugin.getConfig().getString("messages.player-only", "&cOnly players can use that.")));
             return true;
         }
         if (!player.hasPermission("ruinedcollections.menu")) {
-            player.sendMessage(Text.color(plugin.messagePrefix() + plugin.getConfig().getString("messages.no-permission")));
+            player.sendMessage(Text.color(plugin.messagePrefix() + plugin.getConfig().getString("messages.no-permission", "&cYou do not have permission.")));
             return true;
         }
         plugin.scheduler().runPlayer(player, () -> plugin.menuService().openMain(player, 0));

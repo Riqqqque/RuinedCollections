@@ -27,16 +27,16 @@ public final class DiagnosticService {
     private final JavaPlugin plugin;
     private final Object lock = new Object();
 
-    private boolean enabled;
-    private boolean mirrorWarningsToConsole;
-    private boolean includeStackTraces;
-    private boolean debugTrackingSkips;
-    private boolean debugProgress;
-    private boolean debugRewards;
-    private boolean debugCommands;
-    private long maxBytes;
-    private int maxArchives;
-    private File logFile;
+    private volatile boolean enabled;
+    private volatile boolean mirrorWarningsToConsole;
+    private volatile boolean includeStackTraces;
+    private volatile boolean debugTrackingSkips;
+    private volatile boolean debugProgress;
+    private volatile boolean debugRewards;
+    private volatile boolean debugCommands;
+    private volatile long maxBytes;
+    private volatile int maxArchives;
+    private volatile File logFile;
     private BufferedWriter writer;
 
     public DiagnosticService(JavaPlugin plugin) {

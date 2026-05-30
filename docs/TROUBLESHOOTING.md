@@ -8,7 +8,7 @@ Check:
 
 - Server is Paper or Folia, not vanilla.
 - Server is Paper or Folia `1.21` through `26.1.2`.
-- Java is `21+`.
+- The plugin jar can run on Java `21+`, and the server is using the Java version required by its Paper/Folia version. Paper/Folia `26.1+` requires Java `25`.
 - The jar is in the server `plugins` folder.
 
 Look for startup errors near:
@@ -101,7 +101,7 @@ Example:
 
 ## Import Did Not Change Online Player Data
 
-After an applied import, online players touched by the import are refreshed automatically.
+After an applied import, online players touched by the import are refreshed automatically and leaderboard caches start refreshing against the imported data.
 
 If something still looks stale:
 

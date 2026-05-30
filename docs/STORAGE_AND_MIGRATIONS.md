@@ -117,7 +117,7 @@ Preview work runs off the server thread and validates UUIDs, collection ids, and
 
 Import sets progress to the values in the file and inserts claimed tiers if missing.
 
-Online players touched by an import are refreshed after the import finishes so menus and placeholders do not keep stale cached progress.
+Online players touched by an import are refreshed after the import finishes so menus and placeholders do not keep stale cached progress. Leaderboard caches also start refreshing from the imported data.
 
 ## Migration Design
 
