@@ -1,0 +1,212 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, for example v1.0.13'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    env:
+      HANGAR_PROJECT_ID: '6235'
+      MODRINTH_PROJECT_ID: 's0cUY0vi'
+      GAME_VERSIONS_JSON: '["1.21","1.21.1","1.21.2","1.21.3","1.21.4","1.21.5","1.21.6","1.21.7","1.21.8","1.21.9","1.21.10","1.21.11","26.1","26.1.1","26.1.2"]'
+      LOADERS_JSON: '["paper","folia"]'
+      MAX_HANGAR_UPLOAD_BYTES: '15000000'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+            git fetch --tags --force
+            git checkout "$tag"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+(\.[0-9]+){2}([.-][A-Za-z0-9.-]+)?$ ]]; then
+            echo "Release tag must look like v1.0.13, got $tag" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Verify version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pom_version="$(grep -m1 -oP '(?<=<version>)[^<]+' pom.xml)"
+          if [[ "$pom_version" != "${{ steps.meta.outputs.version }}" ]]; then
+            echo "Tag ${{ steps.meta.outputs.tag }} does not match pom.xml version $pom_version" >&2
+            exit 1
+          fi
+
+      - name: Compile against latest supported API
+        run: mvn -B "-Dpaper.api.version=26.1.2.build.66-stable" -DskipTests compile
+
+      - name: Build jar
+        run: mvn -B clean package
+
+      - name: Verify jar
+        id: jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="target/RuinedCollections.jar"
+          test -f "$jar"
+          size="$(stat -c%s "$jar")"
+          sha256="$(sha256sum "$jar" | awk '{print $1}')"
+          if (( size >= MAX_HANGAR_UPLOAD_BYTES )); then
+            echo "Jar is $size bytes, which is over the Hangar upload limit target." >&2
+            exit 1
+          fi
+          echo "path=$jar" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          RuinedCollections ${{ steps.meta.outputs.version }}
+
+          - Built for Paper and Folia servers from 1.21 through 26.1.2.
+          - Release jar: RuinedCollections.jar.
+          - SHA-256: ${{ steps.jar.outputs.sha256 }}.
+          EOF
+          sed -i 's/^          //' release-notes.md
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          title="RuinedCollections ${{ steps.meta.outputs.version }}"
+          jar="${{ steps.jar.outputs.path }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$jar" --clobber
+            gh release edit "$tag" --title "$title" --notes-file release-notes.md
+          else
+            gh release create "$tag" "$jar" --verify-tag --title "$title" --notes-file release-notes.md
+          fi
+
+      - name: Publish Hangar version
+        env:
+          HANGAR_API_TOKEN: ${{ secrets.HANGAR_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HANGAR_API_TOKEN:-}" ]]; then
+            echo "::warning::HANGAR_API_TOKEN is not set; skipping Hangar publish."
+            exit 0
+          fi
+
+          token_json="$(curl -fsS -X POST --get --data-urlencode "apiKey=$HANGAR_API_TOKEN" "https://hangar.papermc.io/api/v1/authenticate")"
+          jwt="$(jq -r '.token' <<< "$token_json")"
+          if [[ -z "$jwt" || "$jwt" == "null" ]]; then
+            echo "Hangar authentication did not return a token." >&2
+            exit 1
+          fi
+
+          version="${{ steps.meta.outputs.version }}"
+          if curl -fsS -H "Authorization: $jwt" "https://hangar.papermc.io/api/v1/projects/${HANGAR_PROJECT_ID}/versions/${version}" >/dev/null 2>&1; then
+            echo "Hangar version $version already exists; skipping."
+            exit 0
+          fi
+
+          jq -n \
+            --arg version "$version" \
+            --arg description "$(cat release-notes.md)" \
+            --argjson gameVersions "$GAME_VERSIONS_JSON" \
+            '{
+              channel: "Release",
+              version: $version,
+              description: $description,
+              files: [{ platforms: ["PAPER"] }],
+              platformDependencies: { PAPER: $gameVersions },
+              pluginDependencies: { PAPER: [] }
+            }' > hangar-version.json
+
+          curl -fsS -X POST "https://hangar.papermc.io/api/v1/projects/${HANGAR_PROJECT_ID}/upload" \
+            -H "Authorization: $jwt" \
+            -F "versionUpload=@hangar-version.json;type=application/json" \
+            -F "files=@${{ steps.jar.outputs.path }};filename=RuinedCollections.jar;type=application/java-archive"
+
+      - name: Publish Modrinth version
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MODRINTH_TOKEN:-}" ]]; then
+            echo "::warning::MODRINTH_TOKEN is not set; skipping Modrinth publish."
+            exit 0
+          fi
+
+          version="${{ steps.meta.outputs.version }}"
+          existing="$(curl -fsS \
+            -H "Authorization: $MODRINTH_TOKEN" \
+            -H "User-Agent: Riqqqque/RuinedCollections" \
+            "https://api.modrinth.com/v2/project/${MODRINTH_PROJECT_ID}/version" \
+            | jq -r --arg version "$version" '.[] | select(.version_number == $version) | .id' \
+            | head -n 1)"
+          if [[ -n "$existing" ]]; then
+            echo "Modrinth version $version already exists; skipping."
+            exit 0
+          fi
+
+          jq -n \
+            --arg projectId "$MODRINTH_PROJECT_ID" \
+            --arg name "RuinedCollections $version" \
+            --arg version "$version" \
+            --arg changelog "$(cat release-notes.md)" \
+            --argjson gameVersions "$GAME_VERSIONS_JSON" \
+            --argjson loaders "$LOADERS_JSON" \
+            '{
+              name: $name,
+              version_number: $version,
+              changelog: $changelog,
+              dependencies: [],
+              game_versions: $gameVersions,
+              version_type: "release",
+              loaders: $loaders,
+              featured: true,
+              project_id: $projectId,
+              file_parts: ["file"]
+            }' > modrinth-version.json
+
+          curl -fsS -X POST "https://api.modrinth.com/v2/version" \
+            -H "Authorization: $MODRINTH_TOKEN" \
+            -H "User-Agent: Riqqqque/RuinedCollections" \
+            -F "data=@modrinth-version.json;type=application/json" \
+            -F "file=@${{ steps.jar.outputs.path }};filename=RuinedCollections.jar;type=application/java-archive"
