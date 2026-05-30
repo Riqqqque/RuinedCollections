@@ -18,17 +18,19 @@ public final class LeaderboardService {
     private final RuinedCollectionsPlugin plugin;
     private final ConcurrentMap<String, List<LeaderboardEntry>> leaderboards = new ConcurrentHashMap<>();
     private final ConcurrentMap<RankKey, RankCacheEntry> rankCache = new ConcurrentHashMap<>();
-    private final ConcurrentMap<RankKey, Boolean> rankLoads = new ConcurrentHashMap<>();
+    private final ConcurrentMap<RankKey, Long> rankLoads = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Long> leaderboardLoads = new ConcurrentHashMap<>();
 
     private SchedulerAdapter.TaskHandle refreshTask;
-    private boolean enabled;
-    private int limit;
-    private long refreshTicks;
-    private long rankCacheMillis;
-    private String emptyName;
-    private String emptyValue;
-    private String loadingValue;
-    private String unknownNameFormat;
+    private volatile boolean enabled;
+    private volatile int limit;
+    private volatile long refreshTicks;
+    private volatile long rankCacheMillis;
+    private volatile long generation;
+    private volatile String emptyName;
+    private volatile String emptyValue;
+    private volatile String loadingValue;
+    private volatile String unknownNameFormat;
 
     public LeaderboardService(RuinedCollectionsPlugin plugin) {
         this.plugin = plugin;
@@ -52,9 +54,11 @@ public final class LeaderboardService {
 
     public void reload() {
         stop();
+        generation++;
         leaderboards.clear();
         rankCache.clear();
         rankLoads.clear();
+        leaderboardLoads.clear();
         start();
     }
 
@@ -87,7 +91,7 @@ public final class LeaderboardService {
         if (cached != null && now - cached.loadedAt() <= rankCacheMillis) {
             return cached.rank() <= 0 ? (raw ? "0" : emptyValue) : String.valueOf(cached.rank());
         }
-        requestRank(key);
+        requestRank(key, generation);
         if (cached == null) {
             return raw ? "0" : loadingValue;
         }
@@ -98,27 +102,44 @@ public final class LeaderboardService {
         if (!enabled) {
             return;
         }
+        long currentGeneration = generation;
         List<String> collectionIds = plugin.collectionRegistry().enabledCollections().stream()
                 .map(CollectionDefinition::id)
                 .toList();
         for (String collectionId : collectionIds) {
-            refreshCollection(collectionId);
+            refreshCollection(collectionId, currentGeneration);
         }
     }
 
     public void refreshCollection(String collectionId) {
+        refreshCollection(collectionId, generation);
+    }
+
+    private void refreshCollection(String collectionId, long refreshGeneration) {
         if (!enabled) {
             return;
         }
-        plugin.repository().loadLeaderboard(collectionId, limit).whenComplete((rows, throwable) -> {
+        String normalized = normalize(collectionId);
+        if (leaderboardLoads.putIfAbsent(normalized, refreshGeneration) != null) {
+            return;
+        }
+        plugin.repository().loadLeaderboard(normalized, limit).whenComplete((rows, throwable) -> {
+            leaderboardLoads.remove(normalized, refreshGeneration);
             if (throwable != null) {
                 plugin.diagnostics().error("leaderboards", "Could not load leaderboard", DiagnosticService.fields(
-                        "collection", collectionId,
+                        "collection", normalized,
                         "limit", limit
                 ), throwable);
                 return;
             }
-            plugin.scheduler().runGlobal(() -> store(collectionId, rows));
+            if (refreshGeneration != generation || !enabled) {
+                return;
+            }
+            plugin.scheduler().runGlobal(() -> {
+                if (refreshGeneration == generation && enabled) {
+                    store(normalized, rows);
+                }
+            });
         });
     }
 
@@ -162,17 +183,20 @@ public final class LeaderboardService {
         ));
     }
 
-    private void requestRank(RankKey key) {
-        if (rankLoads.putIfAbsent(key, true) != null) {
+    private void requestRank(RankKey key, long requestGeneration) {
+        if (rankLoads.putIfAbsent(key, requestGeneration) != null) {
             return;
         }
         plugin.repository().loadPlayerRank(key.playerId(), key.collectionId()).whenComplete((rank, throwable) -> {
-            rankLoads.remove(key);
+            rankLoads.remove(key, requestGeneration);
             if (throwable != null) {
                 plugin.diagnostics().error("leaderboards", "Could not load player rank", DiagnosticService.fields(
                         "uuid", key.playerId(),
                         "collection", key.collectionId()
                 ), throwable);
+                return;
+            }
+            if (requestGeneration != generation || !enabled) {
                 return;
             }
             rankCache.put(key, new RankCacheEntry(rank == null ? 0L : rank, System.currentTimeMillis()));

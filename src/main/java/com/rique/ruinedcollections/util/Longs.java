@@ -1,5 +1,7 @@
 package com.rique.ruinedcollections.util;
 
+import java.util.Locale;
+
 public final class Longs {
     private Longs() {
     }
@@ -35,6 +37,6 @@ public final class Longs {
     }
 
     public static String format(long value) {
-        return String.format("%,d", value);
+        return String.format(Locale.US, "%,d", value);
     }
 }

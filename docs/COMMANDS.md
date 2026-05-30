@@ -226,7 +226,7 @@ Shows how many progress rows, claimed tiers, and saved player names will be impo
 /rc import <file> --apply
 ```
 
-Online players touched by the import are refreshed after the import applies.
+Online players touched by the import are refreshed after the import applies. Leaderboard caches also start refreshing from the imported data.
 
 ### Diagnostics
 

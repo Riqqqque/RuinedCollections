@@ -7,6 +7,7 @@ import com.rique.ruinedcollections.reward.RewardType;
 import com.rique.ruinedcollections.util.Longs;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
 import org.bukkit.inventory.ItemStack;
@@ -270,7 +271,7 @@ public final class CollectionRegistry {
             if (file == null || !validTierId(tierId) || goal <= 0) {
                 return false;
             }
-            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            YamlConfiguration config = loadYaml(file);
             List<Map<?, ?>> tiers = new ArrayList<>(config.getMapList("tiers"));
             long highestGoal = 0;
             for (Map<?, ?> tier : tiers) {
@@ -305,7 +306,7 @@ public final class CollectionRegistry {
             if (file == null) {
                 return false;
             }
-            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            YamlConfiguration config = loadYaml(file);
             List<Map<?, ?>> sources = new ArrayList<>(config.getMapList("sources"));
             Map<String, Object> source = new LinkedHashMap<>();
             source.put("type", type.name());
@@ -333,7 +334,7 @@ public final class CollectionRegistry {
             if (file == null) {
                 return false;
             }
-            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            YamlConfiguration config = loadYaml(file);
             List<Map<?, ?>> tiers = new ArrayList<>(config.getMapList("tiers"));
             boolean changed = false;
             for (int index = 0; index < tiers.size(); index++) {
@@ -373,7 +374,13 @@ public final class CollectionRegistry {
     }
 
     private Optional<CollectionDefinition> parseFile(File file, List<String> issues) {
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+        YamlConfiguration config;
+        try {
+            config = loadYaml(file);
+        } catch (IOException exception) {
+            issues.add(file.getName() + ": could not read YAML: " + exception.getMessage());
+            return Optional.empty();
+        }
         String id = normalizeId(config.getString("id", file.getName().replaceFirst("\\.ya?ml$", "")));
         if (!validId(id)) {
             issues.add(file.getName() + ": invalid id '" + id + "'. Use 1-64 lowercase letters, numbers, _ or -.");
@@ -733,6 +740,16 @@ public final class CollectionRegistry {
             return Long.parseLong(value.toString());
         } catch (NumberFormatException ignored) {
             return fallback;
+        }
+    }
+
+    private static YamlConfiguration loadYaml(File file) throws IOException {
+        YamlConfiguration config = new YamlConfiguration();
+        try {
+            config.load(file);
+            return config;
+        } catch (InvalidConfigurationException exception) {
+            throw new IOException("Invalid YAML: " + exception.getMessage(), exception);
         }
     }
 

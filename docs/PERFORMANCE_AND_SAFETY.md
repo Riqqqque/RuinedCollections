@@ -6,6 +6,8 @@ RuinedCollections is built around cheap event checks and batched storage writes.
 
 RuinedCollections supports Paper and Folia `1.21` through `26.1.2` while compiling the release jar against the Paper `1.21` API. Player-facing work is routed through a scheduler adapter so Folia servers do not run player inventory, message, or reward work from a shared global task.
 
+The jar targets Java `21` bytecode for the older supported API baseline. Run the server on the Java version required by that Paper/Folia version; Paper/Folia `26.1+` requires Java `25`.
+
 ## Progress Writes
 
 Progress is not written to SQL on every event. The plugin batches progress and flushes it on an interval.
@@ -81,6 +83,7 @@ Recommended settings:
 - Use `/rc validate` after every config change.
 - Back up before imports.
 - Keep `leaderboards.refresh-interval-seconds` at `30` or higher unless the server is small.
+- Leaderboard refreshes are cached and coalesced so repeated placeholder/menu requests do not stack duplicate loads for the same collection.
 
 ## Known Limits
 

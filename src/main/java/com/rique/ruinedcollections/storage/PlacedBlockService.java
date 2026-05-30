@@ -30,14 +30,15 @@ public final class PlacedBlockService {
 
     public void mark(Block block) {
         BlockLocationKey key = BlockLocationKey.from(block.getLocation());
+        String material = block.getType().name();
         placedBlocks.add(key);
-        repository.addPlacedBlock(key, block.getType().name()).exceptionally(throwable -> {
+        repository.addPlacedBlock(key, material).exceptionally(throwable -> {
             plugin.diagnostics().error("tracking", "Could not save placed block record", DiagnosticService.fields(
                     "world", key.world(),
                     "x", key.x(),
                     "y", key.y(),
                     "z", key.z(),
-                    "material", block.getType().name()
+                    "material", material
             ), throwable);
             return null;
         });

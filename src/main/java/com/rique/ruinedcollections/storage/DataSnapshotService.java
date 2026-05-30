@@ -3,6 +3,7 @@ package com.rique.ruinedcollections.storage;
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
@@ -39,7 +40,7 @@ public final class DataSnapshotService {
         CompletableFuture<List<ProgressRow>> progressFuture = repository.loadAllProgress();
         CompletableFuture<List<ClaimedRow>> claimedFuture = repository.loadAllClaimed();
         CompletableFuture<List<PlayerNameRow>> namesFuture = repository.loadAllPlayerNames();
-        return CompletableFuture.allOf(progressFuture, claimedFuture, namesFuture).thenApply(ignored -> {
+        return CompletableFuture.allOf(progressFuture, claimedFuture, namesFuture).thenApplyAsync(ignored -> {
             List<ProgressRow> progress = progressFuture.join();
             List<ClaimedRow> claimed = claimedFuture.join();
             List<PlayerNameRow> names = namesFuture.join();
@@ -77,11 +78,11 @@ public final class DataSnapshotService {
             } catch (IOException exception) {
                 throw new CollectionRepository.StorageException(exception);
             }
-        });
+        }, executor);
     }
 
     public ImportPreview preview(File file) {
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+        YamlConfiguration config = loadYaml(file);
         List<ProgressRow> progressRows = new ArrayList<>();
         List<ClaimedRow> claimedRows = new ArrayList<>();
         List<PlayerNameRow> playerNames = new ArrayList<>();
@@ -171,5 +172,15 @@ public final class DataSnapshotService {
         return tierId != null && !tierId.isBlank()
                 && tierId.length() <= MAX_ID_LENGTH
                 && tierId.matches(TIER_PATTERN);
+    }
+
+    private YamlConfiguration loadYaml(File file) {
+        YamlConfiguration config = new YamlConfiguration();
+        try {
+            config.load(file);
+            return config;
+        } catch (IOException | InvalidConfigurationException exception) {
+            throw new CollectionRepository.StorageException(exception);
+        }
     }
 }

@@ -4,11 +4,13 @@ import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.collection.CollectionDefinition;
 import com.rique.ruinedcollections.collection.CollectionTier;
 import com.rique.ruinedcollections.collection.DisplayItem;
+import com.rique.ruinedcollections.diagnostics.DiagnosticService;
 import com.rique.ruinedcollections.util.Longs;
 import com.rique.ruinedcollections.util.Text;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -20,6 +22,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -38,7 +41,16 @@ public final class MenuService implements Listener {
 
     public void load() {
         File file = new File(plugin.getDataFolder(), "menus/collections.yml");
-        config = YamlConfiguration.loadConfiguration(file);
+        YamlConfiguration loaded = new YamlConfiguration();
+        try {
+            loaded.load(file);
+            config = loaded;
+        } catch (IOException | InvalidConfigurationException exception) {
+            config = new YamlConfiguration();
+            plugin.diagnostics().warn("menus", "Could not load menu config", DiagnosticService.fields(
+                    "file", file.getAbsolutePath()
+            ), exception);
+        }
     }
 
     public void openMain(Player player, int page) {

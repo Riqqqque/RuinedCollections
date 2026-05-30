@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/Riqqqque/RuinedCollections?label=release)](https://github.com/Riqqqque/RuinedCollections/releases/latest)
 [![Download](https://img.shields.io/badge/download-jar-2ea44f)](https://github.com/Riqqqque/RuinedCollections/releases/latest/download/RuinedCollections.jar)
 [![Paper/Folia](https://img.shields.io/badge/Paper%2FFolia-1.21%20to%2026.1.2-2f3136)](https://papermc.io/)
-[![Java](https://img.shields.io/badge/Java-21%2B-b07219)](https://adoptium.net/)
+[![Java](https://img.shields.io/badge/Java-21%20bytecode-b07219)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/license-free%20use%2C%20no%20resale-blue)](LICENSE)
 
 RuinedCollections is a Paper and Folia collections plugin built for servers that want Hypixel SkyBlock-style progression without locking admins into one fixed system.
@@ -33,12 +33,12 @@ Latest jar:
 ## Requirements
 
 - Paper or Folia `1.21` through `26.1.2`
-- Java `21+`
+- Java `21+` for the plugin jar; run the server on the Java version required by your Paper/Folia version
 - PlaceholderAPI optional
 - Vault plus an economy plugin optional
 - LuckPerms optional through command rewards
 
-RuinedCollections compiles the release jar against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` and `folia-supported: true`, so the code stays compatible with the oldest supported server while still validating cleanly against the current Paper `26.1.2` API.
+RuinedCollections compiles the release jar against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` and `folia-supported: true`, so the code stays compatible with the oldest supported server while still validating cleanly against the current Paper `26.1.2` API. Paper/Folia `26.1+` servers require Java `25`; older `1.21.x` servers follow their own Paper/Folia Java requirement.
 
 ## Quick Start
 
