@@ -10,6 +10,7 @@ Check:
 - Server is Paper or Folia `1.21` through `26.1.2`.
 - The plugin jar can run on Java `21+`, and the server is using the Java version required by its Paper/Folia version. Paper/Folia `26.1+` requires Java `25`.
 - The jar is in the server `plugins` folder.
+- Paper can download the declared SQLite/MySQL libraries on first boot, or those libraries already exist in the server library cache.
 
 Look for startup errors near:
 

@@ -13,6 +13,8 @@ This page covers the normal install path, first boot, and the checks worth doing
 | Economy plugin | Optional, required only if using Vault economy rewards |
 | LuckPerms | Optional, usually used through command rewards |
 
+The release jar uses Paper's built-in library loader for SQLite and MySQL drivers. On first boot, Paper downloads those libraries into its server library cache before RuinedCollections enables.
+
 ## Install The Jar
 
 1. Download the latest jar from the [releases page](https://github.com/Riqqqque/RuinedCollections/releases/latest).

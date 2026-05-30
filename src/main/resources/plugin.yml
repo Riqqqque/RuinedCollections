@@ -9,6 +9,10 @@ softdepend:
   - PlaceholderAPI
   - Vault
   - LuckPerms
+libraries:
+  - org.xerial:sqlite-jdbc:${sqlite-jdbc.version}
+  - com.mysql:mysql-connector-j:${mysql-connector.version}
+  - com.google.protobuf:protobuf-java:${protobuf.version}
 commands:
   ruinedcollections:
     description: Main admin command for RuinedCollections.

@@ -17,6 +17,7 @@ RuinedCollections is built for Paper/Folia servers from the `1.21` line through 
 | Latest API check | Paper `26.1.2.build.66-stable` |
 | `plugin.yml` API version | `1.21` |
 | Folia metadata | `folia-supported: true` |
+| Runtime libraries | Paper library loader for SQLite and MySQL drivers |
 
 The release jar is intentionally compiled against the Paper `1.21` API and Java `21` bytecode. That keeps the code from accidentally relying on newer API methods that would break older supported servers. The server itself still needs the Java runtime required by that Paper/Folia version.
 

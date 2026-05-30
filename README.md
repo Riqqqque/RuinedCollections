@@ -40,6 +40,8 @@ Latest jar:
 
 RuinedCollections compiles the release jar against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` and `folia-supported: true`, so the code stays compatible with the oldest supported server while still validating cleanly against the current Paper `26.1.2` API. Paper/Folia `26.1+` servers require Java `25`; older `1.21.x` servers follow their own Paper/Folia Java requirement.
 
+The jar uses Paper's built-in library loader for SQLite and MySQL drivers. On first boot, Paper downloads those libraries into its server library cache before the plugin enables.
+
 ## Quick Start
 
 1. Put the jar in `plugins`.
