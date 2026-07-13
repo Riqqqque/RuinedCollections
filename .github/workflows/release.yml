@@ -59,6 +59,9 @@ jobs:
           java-version: '25'
           cache: gradle
 
+      - name: Prepare Gradle wrapper
+        run: chmod +x gradlew
+
       - name: Verify version
         shell: bash
         run: |
