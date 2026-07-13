@@ -17,6 +17,9 @@ public final class RewardAction {
         this.text = text;
         this.command = command;
         this.sender = sender;
+        if (!Double.isFinite(amount) || amount < 0.0D) {
+            throw new IllegalArgumentException("amount must be a finite, non-negative number");
+        }
         this.amount = amount;
     }
 
@@ -41,13 +44,13 @@ public final class RewardAction {
     }
 
     public static RewardAction from(ConfigurationSection section) {
-        RewardType type = RewardType.valueOf(section.getString("type", "MESSAGE").toUpperCase());
+        RewardType type = RewardType.valueOf(section.getString("type", "MESSAGE").toUpperCase(Locale.ROOT));
         return new RewardAction(
                 type,
                 section.getString("text", ""),
                 section.getString("command", ""),
                 section.getString("sender", "CONSOLE"),
-                section.getDouble("amount", 0.0)
+                asDouble(section.get("amount"))
         );
     }
 
@@ -68,16 +71,16 @@ public final class RewardAction {
     }
 
     private static double asDouble(Object value) {
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
         if (value == null) {
             return 0.0;
         }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
         try {
             return Double.parseDouble(value.toString());
-        } catch (NumberFormatException ignored) {
-            return 0.0;
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("amount must be a number", exception);
         }
     }
 }

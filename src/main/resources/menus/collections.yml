@@ -5,10 +5,17 @@ main:
     material: BLACK_STAINED_GLASS_PANE
     name: ' '
   collection-lore:
-    - '&7Progress: &f%progress%&7/&f%next_goal%'
-    - '&7Unlocked tiers: &f%tier%'
+    - '&7Set: &f%set%'
+    - '&7Progress: &f%progress%&7/&f%next_goal% &8(%percent%%)'
+    - '%progress_bar%'
+    - '&7Unlocked tiers: &f%tier%&7/&f%total_tiers%'
+    - '&7Max goal: &f%max_goal%'
     - ''
     - '&eClick to view rewards.'
+progress-bar:
+  length: 20
+  filled: '&a|'
+  empty: '&7|'
 detail:
   size: 54
   filler:
@@ -18,7 +25,8 @@ detail:
   tier-lore:
     locked:
       - '&7Goal: &f%goal%'
-      - '&7Progress: &f%progress%&7/&f%goal%'
+      - '&7Progress: &f%progress%&7/&f%goal% &8(%percent%%)'
+      - '%progress_bar%'
       - ''
       - '&cLocked'
     unlocked:

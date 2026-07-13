@@ -51,6 +51,8 @@ public final class CollectionRegistry {
     private final List<TrackedSource> craftAny = new ArrayList<>();
     private final Map<Material, List<TrackedSource>> fish = new HashMap<>();
     private final List<TrackedSource> fishAny = new ArrayList<>();
+    private final Map<Material, List<TrackedSource>> armorEquip = new HashMap<>();
+    private final List<TrackedSource> armorEquipAny = new ArrayList<>();
 
     public CollectionRegistry(RuinedCollectionsPlugin plugin) {
         this.plugin = plugin;
@@ -115,6 +117,23 @@ public final class CollectionRegistry {
         try {
             return collections.values().stream()
                     .filter(CollectionDefinition::enabled)
+                    .sorted(Comparator.comparingInt(CollectionDefinition::menuSlot).thenComparing(CollectionDefinition::id))
+                    .toList();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public List<CollectionDefinition> enabledCollectionsInCategory(String category) {
+        String normalizedCategory = normalizeId(category);
+        if (normalizedCategory.isBlank()) {
+            return List.of();
+        }
+        lock.readLock().lock();
+        try {
+            return collections.values().stream()
+                    .filter(CollectionDefinition::enabled)
+                    .filter(collection -> normalizedCategory.equals(collection.category()))
                     .sorted(Comparator.comparingInt(CollectionDefinition::menuSlot).thenComparing(CollectionDefinition::id))
                     .toList();
         } finally {
@@ -192,6 +211,15 @@ public final class CollectionRegistry {
         }
     }
 
+    public List<ProgressMatch> matchArmorEquip(ItemStack item) {
+        lock.readLock().lock();
+        try {
+            return matchItem(item, armorEquip, armorEquipAny, 1);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
     public File fileFor(String id) {
         lock.readLock().lock();
         try {
@@ -226,7 +254,11 @@ public final class CollectionRegistry {
             YamlConfiguration config = new YamlConfiguration();
             config.set("id", normalized);
             config.set("enabled", true);
+            config.set("set", material.isBlock() ? "blocks" : "items");
+            config.set("permission", "");
+            config.set("hidden-until-progress", false);
             config.set("display-name", displayName == null || displayName.isBlank() ? title(normalized) : displayName);
+            config.set("menu-title", "");
             config.set("description", List.of("&7New collection."));
             config.set("display-item.material", material.name());
             config.set("menu-slot", -1);
@@ -390,6 +422,20 @@ public final class CollectionRegistry {
             issues.add(file.getName() + ": duplicate collection id '" + id + "'.");
             return Optional.empty();
         }
+        String category = normalizeId(config.getString("set", config.getString("category", "")));
+        if (!category.isBlank() && !validId(category)) {
+            issues.add(file.getName() + ": invalid category '" + category + "'. Use 1-64 lowercase letters, numbers, _ or -.");
+            category = "";
+        }
+        String permission = config.getString("permission", config.getString("view-permission", ""));
+        if (permission == null) {
+            permission = "";
+        }
+        permission = permission.trim();
+        if (permission.length() > 128 || permission.contains(" ")) {
+            issues.add(file.getName() + ": ignored invalid permission '" + permission + "'. Permissions must be 1-128 characters without spaces.");
+            permission = "";
+        }
 
         Material displayMaterial = material(config.getString("display-item.material", "CHEST"), file, issues).orElse(Material.CHEST);
         Integer customModelData = config.isInt("display-item.custom-model-data") ? config.getInt("display-item.custom-model-data") : null;
@@ -400,6 +446,7 @@ public final class CollectionRegistry {
         }
         if (sources.isEmpty()) {
             issues.add(file.getName() + ": no valid sources found.");
+            return Optional.empty();
         }
 
         List<CollectionTier> tiers = new ArrayList<>();
@@ -424,12 +471,17 @@ public final class CollectionRegistry {
         }
         if (tiers.isEmpty()) {
             issues.add(file.getName() + ": no valid tiers found.");
+            return Optional.empty();
         }
 
         return Optional.of(new CollectionDefinition(
                 id,
                 config.getBoolean("enabled", true),
+                category,
+                permission,
+                config.getBoolean("hidden-until-progress", false),
                 config.getString("display-name", title(id)),
+                config.getString("menu-title", ""),
                 config.getStringList("description"),
                 new DisplayItem(displayMaterial, customModelData),
                 config.getInt("menu-slot", -1),
@@ -477,14 +529,22 @@ public final class CollectionRegistry {
         }
 
         List<String> materialValues = stringList(map.get("materials"));
+        boolean anyMaterial = containsWildcard(materialValues);
         Set<Material> materials = new LinkedHashSet<>();
         for (String value : materialValues) {
+            if (wildcard(value)) {
+                continue;
+            }
             material(value, file, issues).ifPresent(materials::add);
         }
 
         List<String> entityValues = stringList(map.get("entities"));
+        boolean anyEntity = containsWildcard(entityValues);
         Set<EntityType> entities = new LinkedHashSet<>();
         for (String value : entityValues) {
+            if (wildcard(value)) {
+                continue;
+            }
             try {
                 entities.add(EntityType.valueOf(value.toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException exception) {
@@ -492,17 +552,34 @@ public final class CollectionRegistry {
             }
         }
 
-        if (type == CollectionSourceType.ENTITY_KILL && !entityValues.isEmpty() && entities.isEmpty()) {
-            issues.add(file.getName() + ": skipped entity source because no valid entities were found.");
-            return Optional.empty();
-        }
-        if (type != CollectionSourceType.ENTITY_KILL && type != CollectionSourceType.MANUAL && !materialValues.isEmpty() && materials.isEmpty()) {
-            issues.add(file.getName() + ": skipped material source because no valid materials were found.");
-            return Optional.empty();
+        if (type == CollectionSourceType.ENTITY_KILL) {
+            if (entityValues.isEmpty()) {
+                issues.add(file.getName() + ": skipped entity source because entities were not set. Use '*' to match every entity.");
+                return Optional.empty();
+            }
+            if (!anyEntity && entities.isEmpty()) {
+                issues.add(file.getName() + ": skipped entity source because no valid entities were found.");
+                return Optional.empty();
+            }
+        } else if (type != CollectionSourceType.MANUAL) {
+            if (materialValues.isEmpty()) {
+                issues.add(file.getName() + ": skipped material source because materials were not set. Use '*' to match every material.");
+                return Optional.empty();
+            }
+            if (!anyMaterial && materials.isEmpty()) {
+                issues.add(file.getName() + ": skipped material source because no valid materials were found.");
+                return Optional.empty();
+            }
         }
 
         ItemMatcher matcher = parseItemMatcher(map.get("item-match"), file, issues);
-        long amount = Math.max(1, longValue(map.get("amount"), 1));
+        Object rawAmount = map.get("amount");
+        Long parsedAmount = rawAmount == null ? 1L : rawLong(rawAmount);
+        if (parsedAmount == null || parsedAmount <= 0) {
+            issues.add(file.getName() + ": skipped source because amount must be a positive whole number.");
+            return Optional.empty();
+        }
+        long amount = parsedAmount;
         return Optional.of(new SourceRule(type, materials, entities, matcher, amount));
     }
 
@@ -548,7 +625,7 @@ public final class CollectionRegistry {
             try {
                 rewards.add(RewardAction.fromMap(rewardMap));
             } catch (IllegalArgumentException exception) {
-                issues.add(file.getName() + ": invalid reward type '" + rewardMap.get("type") + "'.");
+                issues.add(file.getName() + ": invalid reward: " + exception.getMessage());
             }
         }
         return rewards;
@@ -607,6 +684,7 @@ public final class CollectionRegistry {
                     case ITEM_PICKUP -> addMaterialSource(itemPickup, itemPickupAny, source, tracked);
                     case CRAFT -> addMaterialSource(craft, craftAny, source, tracked);
                     case FISH -> addMaterialSource(fish, fishAny, source, tracked);
+                    case ARMOR_EQUIP -> addMaterialSource(armorEquip, armorEquipAny, source, tracked);
                     case MANUAL -> {
                     }
                 }
@@ -645,6 +723,8 @@ public final class CollectionRegistry {
         craftAny.clear();
         fish.clear();
         fishAny.clear();
+        armorEquip.clear();
+        armorEquipAny.clear();
     }
 
     private Optional<Material> material(String value, File file, List<String> issues) {
@@ -715,6 +795,19 @@ public final class CollectionRegistry {
         return List.of(raw.toString());
     }
 
+    private static boolean containsWildcard(List<String> values) {
+        for (String value : values) {
+            if (wildcard(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean wildcard(String value) {
+        return "*".equals(value) || "ANY".equalsIgnoreCase(value);
+    }
+
     private static Integer rawInt(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -724,6 +817,20 @@ public final class CollectionRegistry {
         }
         try {
             return Integer.parseInt(value.toString());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Long rawLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.toString());
         } catch (NumberFormatException ignored) {
             return null;
         }

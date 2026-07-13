@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 public final class RewardService {
     private final RuinedCollectionsPlugin plugin;
@@ -48,6 +49,7 @@ public final class RewardService {
                     ), throwable);
                     return;
                 }
+                UUID capturedPlayerId = player.getUniqueId();
                 plugin.scheduler().runPlayer(player, () -> {
                     if (!Boolean.TRUE.equals(inserted)) {
                         session.finishClaim(collection.id(), tier.id());
@@ -60,29 +62,45 @@ public final class RewardService {
                         return;
                     }
                     if (!player.isOnline()) {
-                        session.cancelClaim(collection.id(), tier.id());
-                        plugin.diagnostics().warn("rewards", "Player left before reward execution; restored claim for retry", DiagnosticService.fields(
-                                "player", player.getName(),
-                                "uuid", player.getUniqueId(),
-                                "collection", collection.id(),
-                                "tier", tier.id()
-                        ));
-                        plugin.repository().unclaimTier(player.getUniqueId(), collection.id(), tier.id()).exceptionally(exception -> {
-                            plugin.diagnostics().error("rewards", "Could not restore tier claim for offline player", DiagnosticService.fields(
-                                    "player", player.getName(),
-                                    "uuid", player.getUniqueId(),
-                                    "collection", collection.id(),
-                                    "tier", tier.id()
-                            ), exception);
-                            return null;
-                        });
+                        restoreClaimForRetry(session, capturedPlayerId, playerName, collection, tier);
                         return;
                     }
                     session.finishClaim(collection.id(), tier.id());
                     execute(player, collection, tier);
+                }, () -> {
+                    if (Boolean.TRUE.equals(inserted)) {
+                        restoreClaimForRetry(session, capturedPlayerId, playerName, collection, tier);
+                    } else {
+                        session.finishClaim(collection.id(), tier.id());
+                    }
                 });
             });
         }
+    }
+
+    private void restoreClaimForRetry(
+            PlayerProgressSession session,
+            UUID playerId,
+            String playerName,
+            CollectionDefinition collection,
+            CollectionTier tier
+    ) {
+        session.cancelClaim(collection.id(), tier.id());
+        plugin.diagnostics().warn("rewards", "Player left before reward execution; restored claim for retry", DiagnosticService.fields(
+                "player", playerName,
+                "uuid", playerId,
+                "collection", collection.id(),
+                "tier", tier.id()
+        ));
+        plugin.repository().unclaimTier(playerId, collection.id(), tier.id()).exceptionally(exception -> {
+            plugin.diagnostics().error("rewards", "Could not restore tier claim for offline player", DiagnosticService.fields(
+                    "player", playerName,
+                    "uuid", playerId,
+                    "collection", collection.id(),
+                    "tier", tier.id()
+            ), exception);
+            return null;
+        });
     }
 
     private void execute(Player player, CollectionDefinition collection, CollectionTier tier) {
@@ -160,7 +178,12 @@ public final class RewardService {
                 "player", player.getName(),
                 "uuid", player.getUniqueId(),
                 "sender", reward.sender(),
-                "command", command
+                "commandLabel", commandLabel(command)
         ));
+    }
+
+    private String commandLabel(String command) {
+        int separator = command.indexOf(' ');
+        return separator < 0 ? command : command.substring(0, separator);
     }
 }

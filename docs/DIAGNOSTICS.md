@@ -23,6 +23,7 @@ Always logged:
 - missing import files
 - placed-block cache failures
 - hooked optional plugins
+- bStats startup state, including default-id fallback or config opt-out
 
 Debug logged when enabled:
 

@@ -17,6 +17,9 @@ progress:
   flush-interval-seconds: 15
   load-on-join: true
   save-on-quit: true
+  # When true, normal progress gains and admin set/add writes cannot exceed the highest tier goal.
+  # Turn this off if you intentionally want overflow progress above the final configured reward.
+  cap-at-highest-tier: true
 
 diagnostics:
   # Writes detailed plugin diagnostics to plugins/RuinedCollections/logs/diagnostics.log.
@@ -39,15 +42,29 @@ leaderboards:
   refresh-interval-seconds: 60
   entries-per-collection: 10
   rank-cache-seconds: 30
+  # Bounds per-player rank placeholders on networks with a large player history.
+  rank-cache-max-entries: 10000
   empty-name: '-'
   empty-value: '0'
   loading-value: '...'
   unknown-name-format: 'Unknown-%short_uuid%'
 
+placeholders:
+  progress-bar:
+    length: 20
+    filled: '&a|'
+    empty: '&7|'
+
+integrations:
+  bstats:
+    plugin-id: 31969
+
 tracking:
   ignore-creative: true
   ignore-spectator: true
   ignore-player-placed-blocks: true
+  # Database writes are grouped; in-memory protection is still immediate.
+  placed-block-flush-interval-seconds: 1
   disabled-worlds: []
   enabled-worlds: []
 

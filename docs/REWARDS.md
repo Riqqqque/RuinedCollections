@@ -2,6 +2,8 @@
 
 Rewards run when a player reaches a tier goal. Each reward is only paid once per player per tier.
 
+RuinedCollections stores the claim before running economy or command rewards. This prevents duplicate payouts when events repeat or a player reconnects. A forced process crash in the narrow gap between those two steps can leave the tier claimed before an external reward finishes; external commands and economy transactions cannot share the plugin's SQL transaction. Check diagnostics after an unclean shutdown and manually run the missing reward when necessary.
+
 Reward placeholders:
 
 ```text

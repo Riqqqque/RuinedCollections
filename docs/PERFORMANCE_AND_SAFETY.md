@@ -4,7 +4,7 @@ RuinedCollections is built around cheap event checks and batched storage writes.
 
 ## Server Platform
 
-RuinedCollections supports Paper and Folia `1.21` through `26.1.2` while compiling the release jar against the Paper `1.21` API. Player-facing work is routed through a scheduler adapter so Folia servers do not run player inventory, message, or reward work from a shared global task.
+RuinedCollections supports Paper and Folia `1.21` through `26.2` while compiling the release jar against the Paper `1.21` API. Player-facing work is routed through a scheduler adapter so Folia servers do not run player inventory, message, or reward work from a shared global task.
 
 The jar targets Java `21` bytecode for the older supported API baseline. Run the server on the Java version required by that Paper/Folia version; Paper/Folia `26.1+` requires Java `25`.
 
@@ -21,6 +21,12 @@ On player quit, that player's pending progress is flushed without forcing every 
 
 Progress earned while a player is still loading is queued and saved safely if the player leaves before loading finishes.
 
+Exports and imports force a synchronous flush of pending and load-waiting progress first. Imports also pause progress loads for affected players until the snapshot apply finishes, then refresh online sessions.
+
+Craft tracking checks the final server inventory state on the next tick. Shift-click crafting only counts the items that actually reached the player's inventory or cursor.
+
+Armor equip tracking uses Paper's armor change event, so cancelled inventory clicks and invalid client packets do not award progress.
+
 ## Large Goals
 
 Progress uses Java `long` values and SQL `BIGINT`.
@@ -35,6 +41,8 @@ goal: 1000000000
 
 Progress addition is clamped to avoid overflow.
 
+`progress.cap-at-highest-tier` is enabled by default. Live tracking caps progress before updating the player session, and storage writes also enforce the cap so queued saves, offline manual adds, and shutdown flushes cannot exceed the highest configured tier.
+
 ## Reward Safety
 
 Rewards are protected by the claimed tier table. If a player crosses a tier multiple times, the reward should only run once.
@@ -48,9 +56,10 @@ When enabled, tracked placed blocks are saved in SQL.
 ```yaml
 tracking:
   ignore-player-placed-blocks: true
+  placed-block-flush-interval-seconds: 1
 ```
 
-This survives restarts.
+Protection is immediate in memory. Database changes are grouped into ordered transactions and flushed during graceful shutdown, so busy building servers do not create one SQL transaction per block event.
 
 ## World Filters
 
@@ -84,10 +93,12 @@ Recommended settings:
 - Back up before imports.
 - Keep `leaderboards.refresh-interval-seconds` at `30` or higher unless the server is small.
 - Leaderboard refreshes are cached and coalesced so repeated placeholder/menu requests do not stack duplicate loads for the same collection.
+- Set leaderboards are aggregated in SQL from the collections assigned to that set, then cached with the normal leaderboard refresh interval.
 
 ## Known Limits
 
 - Offline progress-style PlaceholderAPI requests return zero or empty values because the plugin does not load all offline player data into memory.
-- Leaderboard top placeholders use stored last-known names and do not require the player to be online.
+- Collection and set leaderboard top placeholders use stored last-known names and do not require the player to be online.
 - Custom block support depends on the custom block plugin unless progress is added manually.
 - Economy rewards need Vault and a registered economy provider.
+- Reward claims use at-most-once delivery. After an unclean process crash, check diagnostics and manually reconcile any external reward that was claimed immediately before the crash.

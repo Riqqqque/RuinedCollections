@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class DataSnapshotService {
     private static final String ID_PATTERN = "[a-z0-9_-]+";
@@ -25,6 +26,7 @@ public final class DataSnapshotService {
 
     private final RuinedCollectionsPlugin plugin;
     private final CollectionRepository repository;
+    private final AtomicBoolean importInProgress = new AtomicBoolean();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "RuinedCollections-Snapshots");
         thread.setDaemon(true);
@@ -37,13 +39,10 @@ public final class DataSnapshotService {
     }
 
     public CompletableFuture<File> exportData(File file) {
-        CompletableFuture<List<ProgressRow>> progressFuture = repository.loadAllProgress();
-        CompletableFuture<List<ClaimedRow>> claimedFuture = repository.loadAllClaimed();
-        CompletableFuture<List<PlayerNameRow>> namesFuture = repository.loadAllPlayerNames();
-        return CompletableFuture.allOf(progressFuture, claimedFuture, namesFuture).thenApplyAsync(ignored -> {
-            List<ProgressRow> progress = progressFuture.join();
-            List<ClaimedRow> claimed = claimedFuture.join();
-            List<PlayerNameRow> names = namesFuture.join();
+        return repository.loadSnapshot().thenApplyAsync(snapshot -> {
+            List<ProgressRow> progress = snapshot.progressRows();
+            List<ClaimedRow> claimed = snapshot.claimedRows();
+            List<PlayerNameRow> names = snapshot.playerNames();
             YamlConfiguration config = new YamlConfiguration();
             config.set("format-version", 2);
             config.set("exported-at", Instant.now().toString());
@@ -83,6 +82,12 @@ public final class DataSnapshotService {
 
     public ImportPreview preview(File file) {
         YamlConfiguration config = loadYaml(file);
+        int formatVersion = config.getInt("format-version", 1);
+        if (formatVersion < 1 || formatVersion > 2) {
+            throw new CollectionRepository.StorageException(new IllegalArgumentException(
+                    "Unsupported snapshot format version: " + formatVersion
+            ));
+        }
         List<ProgressRow> progressRows = new ArrayList<>();
         List<ClaimedRow> claimedRows = new ArrayList<>();
         List<PlayerNameRow> playerNames = new ArrayList<>();
@@ -146,7 +151,16 @@ public final class DataSnapshotService {
         return repository.applySnapshot(preview.progressRows(), preview.claimedRows(), preview.playerNames());
     }
 
+    public boolean beginImport() {
+        return importInProgress.compareAndSet(false, true);
+    }
+
+    public void finishImport() {
+        importInProgress.set(false);
+    }
+
     public void close() {
+        importInProgress.set(false);
         executor.shutdown();
         try {
             if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {

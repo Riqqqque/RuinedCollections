@@ -5,9 +5,10 @@ import org.bukkit.entity.Player;
 
 public final class HookManager {
     private final RuinedCollectionsPlugin plugin;
-    private EconomyProvider economyProvider = new NoEconomyProvider();
-    private boolean placeholderApiEnabled;
-    private boolean luckPermsEnabled;
+    private volatile EconomyProvider economyProvider = new NoEconomyProvider();
+    private volatile boolean placeholderApiEnabled;
+    private volatile boolean luckPermsEnabled;
+    private RuinedCollectionsExpansion expansion;
 
     public HookManager(RuinedCollectionsPlugin plugin) {
         this.plugin = plugin;
@@ -27,7 +28,7 @@ public final class HookManager {
         }
         placeholderApiEnabled = plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI");
         if (placeholderApiEnabled) {
-            PlaceholderBridge.register(plugin);
+            expansion = PlaceholderBridge.register(plugin);
             plugin.diagnostics().info("hooks", "Hooked PlaceholderAPI");
         }
         luckPermsEnabled = plugin.getServer().getPluginManager().isPluginEnabled("LuckPerms");
@@ -40,8 +41,22 @@ public final class HookManager {
         return economyProvider;
     }
 
+    public boolean vaultEnabled() {
+        return economyProvider.enabled();
+    }
+
+    public boolean placeholderApiEnabled() {
+        return placeholderApiEnabled;
+    }
+
     public boolean luckPermsEnabled() {
         return luckPermsEnabled;
+    }
+
+    public void reload() {
+        if (expansion != null) {
+            expansion.reload();
+        }
     }
 
     public String placeholders(Player player, String text) {

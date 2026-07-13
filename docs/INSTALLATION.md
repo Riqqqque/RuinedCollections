@@ -6,8 +6,9 @@ This page covers the normal install path, first boot, and the checks worth doing
 
 | Requirement | Notes |
 | --- | --- |
-| Paper or Folia | `1.21` through `26.1.2` |
+| Paper or Folia | `1.21` through `26.2` |
 | Java | The plugin jar targets Java `21` bytecode. Use the Java version required by your Paper/Folia server version; Paper/Folia `26.1+` requires Java `25`. |
+| Build JDK | Use JDK `25` for the full release build and latest Paper API compile check. |
 | PlaceholderAPI | Optional, for placeholders |
 | Vault | Optional, for economy rewards |
 | Economy plugin | Optional, required only if using Vault economy rewards |
@@ -33,6 +34,18 @@ plugins/RuinedCollections/collections/obsidian.yml
 plugins/RuinedCollections/collections/template_custom_item.yml
 plugins/RuinedCollections/menus/collections.yml
 ```
+
+## bStats
+
+RuinedCollections includes bStats with the official RuinedCollections plugin id.
+
+```yaml
+integrations:
+  bstats:
+    plugin-id: 31969
+```
+
+The plugin uses bStats' normal server-owner opt-out file and only sends aggregate plugin metrics. Older configs that do not have this node use the bundled default id `31969`. Setting this id to `0` stops RuinedCollections from starting bStats, and `/rc reload` applies the change.
 
 ## First Server Check
 
@@ -94,12 +107,16 @@ Before switching storage on a real server:
 
 ## Build From Source
 
+Use the included Gradle wrapper:
+
 ```powershell
-mvn clean package
+.\gradlew.bat clean shadowJar
 ```
 
 Output:
 
 ```text
-target/RuinedCollections.jar
+build/libs/RuinedCollections.jar
 ```
+
+The output jar stays on Java `21` bytecode. JDK `25` is only required for the release workflow and latest API compile check.

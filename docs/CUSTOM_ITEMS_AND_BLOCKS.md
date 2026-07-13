@@ -53,6 +53,24 @@ LONG
 DOUBLE
 ```
 
+## Custom Armor
+
+Custom armor works the same way as other custom items. Use the actual Bukkit material the item uses, then add the custom model data, display name, or persistent data check that identifies the item.
+
+```yaml
+sources:
+  - type: ARMOR_EQUIP
+    materials:
+      - LEATHER_CHESTPLATE
+    item-match:
+      persistent-data:
+        - key: otherplugin:armor_id
+          type: STRING
+          value: custom_chestplate
+```
+
+Armor equip progress is awarded after Paper confirms the player's armor changed, so cancelled clicks and invalid client packets do not count.
+
 ## Custom Block Plugins
 
 There is no single Paper API that identifies every custom block from every plugin.

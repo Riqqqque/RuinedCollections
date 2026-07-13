@@ -2,13 +2,13 @@
 
 [![Release](https://img.shields.io/github/v/release/Riqqqque/RuinedCollections?label=release)](https://github.com/Riqqqque/RuinedCollections/releases/latest)
 [![Download](https://img.shields.io/badge/download-jar-2ea44f)](https://github.com/Riqqqque/RuinedCollections/releases/latest/download/RuinedCollections.jar)
-[![Paper/Folia](https://img.shields.io/badge/Paper%2FFolia-1.21%20to%2026.1.2-2f3136)](https://papermc.io/)
+[![Paper/Folia](https://img.shields.io/badge/Paper%2FFolia-1.21%20to%2026.2-2f3136)](https://papermc.io/)
 [![Java](https://img.shields.io/badge/Java-21%20bytecode-b07219)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/license-free%20use%2C%20no%20resale-blue)](LICENSE)
 
 RuinedCollections is a Paper and Folia collections plugin built for servers that want Hypixel SkyBlock-style progression without locking admins into one fixed system.
 
-Admins can create collections, set goals from small numbers to billions, track different gameplay actions, run commands, give economy rewards, build menus, use placeholders, and export or import player progress.
+Admins can create collections, group them into collection sets, set goals from small numbers to billions, lock them behind permissions, track different gameplay actions, run commands, give economy rewards, build menus, use placeholders, and export or import player progress.
 
 ## Why Use It
 
@@ -17,12 +17,14 @@ Admins can create collections, set goals from small numbers to billions, track d
 | Server-specific collections | YAML collection files and admin edit commands |
 | Huge goals | `long` progress values and SQL `BIGINT` storage |
 | Rewards | Command, message, broadcast, and Vault economy rewards |
+| Access control | Per-collection permissions, hidden-until-progress collections, and max-progress caps |
 | Custom items | Material, custom model data, display name, and PDC matching |
 | Custom blocks | Manual progress and external command workflows |
 | Big-server storage | SQLite by default, MySQL/MariaDB for production networks |
 | Admin safety | Validation, duplicate reward protection, import preview, exports |
 | Diagnostics | Rotating diagnostics log, command tail, and debug categories |
-| Menus and scoreboards | Configurable menus, PlaceholderAPI placeholders, leaderboard placeholders |
+| Menus and scoreboards | Configurable menus, PlaceholderAPI placeholders, collection and set leaderboard placeholders |
+| Usage stats | Optional bStats integration with aggregate, non-player-identifying charts |
 
 ## Download
 
@@ -32,13 +34,14 @@ Latest jar:
 
 ## Requirements
 
-- Paper or Folia `1.21` through `26.1.2`
+- Paper or Folia `1.21` through `26.2`
 - Java `21+` for the plugin jar; run the server on the Java version required by your Paper/Folia version
+- JDK `25` to run the full release build and latest Paper API compile check
 - PlaceholderAPI optional
 - Vault plus an economy plugin optional
 - LuckPerms optional through command rewards
 
-RuinedCollections compiles the release jar against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` and `folia-supported: true`, so the code stays compatible with the oldest supported server while still validating cleanly against the current Paper `26.1.2` API. Paper/Folia `26.1+` servers require Java `25`; older `1.21.x` servers follow their own Paper/Folia Java requirement.
+RuinedCollections compiles the release jar against Paper `1.21-R0.1-SNAPSHOT` with `api-version: '1.21'` and `folia-supported: true`, so the code stays compatible with the oldest supported server while still validating cleanly against the current Paper `26.2` API. Paper/Folia `26.1+` servers require Java `25`; older `1.21.x` servers follow their own Paper/Folia Java requirement.
 
 The jar uses Paper's built-in library loader for SQLite and MySQL drivers. On first boot, Paper downloads those libraries into its server library cache before the plugin enables.
 
@@ -106,15 +109,19 @@ Local docs are also kept in this repository:
 
 ## Build
 
+Use the included Gradle wrapper:
+
 ```powershell
-mvn clean package
+.\gradlew.bat clean shadowJar
 ```
 
 The compiled plugin jar is created at:
 
 ```text
-target/RuinedCollections.jar
+build/libs/RuinedCollections.jar
 ```
+
+The jar is compiled as Java `21` bytecode. Use JDK `25` when running the release script or the latest API check because the `26.2` Paper API is validated with that toolchain.
 
 ## Release
 
@@ -123,7 +130,7 @@ Future releases are tag-driven. The GitHub workflow builds the jar, checks the s
 From a clean working tree:
 
 ```powershell
-.\scripts\release.ps1 1.0.13
+.\scripts\release.ps1 1.0.15
 ```
 
 Required GitHub Actions secrets:

@@ -18,10 +18,17 @@ main:
     material: BLACK_STAINED_GLASS_PANE
     name: ' '
   collection-lore:
-    - '&7Progress: &f%progress%&7/&f%next_goal%'
-    - '&7Unlocked tiers: &f%tier%'
+    - '&7Set: &f%set%'
+    - '&7Progress: &f%progress%&7/&f%next_goal% &8(%percent%%)'
+    - '%progress_bar%'
+    - '&7Unlocked tiers: &f%tier%&7/&f%total_tiers%'
+    - '&7Max goal: &f%max_goal%'
     - ''
     - '&eClick to view rewards.'
+progress-bar:
+  length: 20
+  filled: '&a|'
+  empty: '&7|'
 ```
 
 Collection items come from each collection file:
@@ -30,9 +37,14 @@ Collection items come from each collection file:
 display-item:
   material: OAK_LOG
 menu-slot: 10
+set: blocks
+permission: ''
+hidden-until-progress: false
 ```
 
 If `menu-slot` is `-1`, the plugin places the collection in the normal content grid.
+
+Collections with a permission are hidden from players without that permission. Collections with `hidden-until-progress: true` are hidden until the player has progress, unless the player has `ruinedcollections.admin`.
 
 ## Detail Menu
 
@@ -46,7 +58,8 @@ detail:
   tier-lore:
     locked:
       - '&7Goal: &f%goal%'
-      - '&7Progress: &f%progress%&7/&f%goal%'
+      - '&7Progress: &f%progress%&7/&f%goal% &8(%percent%%)'
+      - '%progress_bar%'
       - ''
       - '&cLocked'
     unlocked:
@@ -65,10 +78,22 @@ Main menu collection lore:
 
 ```text
 %progress%
+%raw_progress%
 %next_goal%
+%goal%
+%max_goal%
+%remaining%
+%percent%
+%max_percent%
+%progress_bar%
+%max_progress_bar%
 %tier%
+%tier_count%
+%total_tiers%
+%maxed%
 %collection%
 %collection_id%
+%set%
 ```
 
 Detail menu tier lore:
@@ -76,7 +101,13 @@ Detail menu tier lore:
 ```text
 %goal%
 %progress%
+%raw_progress%
+%remaining%
+%percent%
+%progress_bar%
 %collection%
+%collection_id%
+%set%
 %tier%
 ```
 

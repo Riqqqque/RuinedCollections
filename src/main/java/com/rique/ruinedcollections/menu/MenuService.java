@@ -16,6 +16,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -54,9 +55,9 @@ public final class MenuService implements Listener {
     }
 
     public void openMain(Player player, int page) {
-        List<CollectionDefinition> collections = plugin.collectionRegistry().enabledCollections();
+        List<CollectionDefinition> collections = visibleCollections(player);
         int size = validSize(config.getInt("main.size", 54));
-        MainMenuHolder holder = new MainMenuHolder(Math.max(0, page));
+        MainMenuHolder holder = new MainMenuHolder(player.getUniqueId(), Math.max(0, page));
         Inventory inventory = Bukkit.createInventory(holder, size, Text.component(plugin.getConfig().getString("menus.main-title", "&8Collections")));
         holder.setInventory(inventory);
         fill(inventory, "main.filler");
@@ -93,17 +94,24 @@ public final class MenuService implements Listener {
     }
 
     public void openDetail(Player player, CollectionDefinition collection, int page) {
+        if (!canView(player, collection)) {
+            player.sendMessage(Text.color(plugin.messagePrefix() + plugin.getConfig().getString("messages.no-permission", "&cYou do not have permission.")));
+            return;
+        }
         int size = validSize(config.getInt("detail.size", 54));
         int[] contentSlots = contentSlots(size);
         int safePage = Math.max(0, page);
-        DetailMenuHolder holder = new DetailMenuHolder(collection.id(), safePage);
-        String title = plugin.getConfig().getString("menus.detail-title", "&8%collection%")
-                .replace("%collection%", Text.color(collection.displayName()));
+        DetailMenuHolder holder = new DetailMenuHolder(player.getUniqueId(), collection.id(), safePage);
+        long progress = plugin.progressService().cachedProgress(player.getUniqueId(), collection.id());
+        Map<String, String> titlePlaceholders = collectionPlaceholders(collection, progress);
+        String titleFormat = collection.menuTitle().isBlank()
+                ? plugin.getConfig().getString("menus.detail-title", "&8%collection%")
+                : collection.menuTitle();
+        String title = Text.placeholders(titleFormat, titlePlaceholders);
         Inventory inventory = Bukkit.createInventory(holder, size, Text.component(title));
         holder.setInventory(inventory);
         fill(inventory, "detail.filler");
 
-        long progress = plugin.progressService().cachedProgress(player.getUniqueId(), collection.id());
         int start = safePage * contentSlots.length;
         for (int i = 0; i < contentSlots.length; i++) {
             int tierIndex = start + i;
@@ -132,12 +140,16 @@ public final class MenuService implements Listener {
         int rawSlot = event.getRawSlot();
         if (top.getHolder() instanceof MainMenuHolder holder) {
             event.setCancelled(true);
+            if (!holder.ownerId().equals(player.getUniqueId())) {
+                closeForeignMenu(player);
+                return;
+            }
             int size = top.getSize();
             if (rawSlot == previousSlot(size) && holder.page() > 0) {
                 plugin.scheduler().runPlayer(player, () -> openMain(player, holder.page() - 1));
                 return;
             }
-            if (rawSlot == nextSlot(size) && hasMainNext(holder.page(), size)) {
+            if (rawSlot == nextSlot(size) && hasMainNext(player, holder.page(), size)) {
                 plugin.scheduler().runPlayer(player, () -> openMain(player, holder.page() + 1));
                 return;
             }
@@ -147,19 +159,31 @@ public final class MenuService implements Listener {
             String collectionId = holder.collectionAt(rawSlot);
             if (collectionId != null) {
                 plugin.collectionRegistry().get(collectionId)
+                        .filter(collection -> canView(player, collection))
                         .ifPresent(collection -> plugin.scheduler().runPlayer(player, () -> openDetail(player, collection)));
             }
         } else if (top.getHolder() instanceof DetailMenuHolder holder) {
             event.setCancelled(true);
-            int size = top.getSize();
-            if (rawSlot == previousSlot(size) && holder.page() > 0) {
-                plugin.collectionRegistry().get(holder.collectionId())
-                        .ifPresent(collection -> plugin.scheduler().runPlayer(player, () -> openDetail(player, collection, holder.page() - 1)));
+            if (!holder.ownerId().equals(player.getUniqueId())) {
+                closeForeignMenu(player);
                 return;
             }
-            if (rawSlot == nextSlot(size) && hasDetailNext(holder, size)) {
-                plugin.collectionRegistry().get(holder.collectionId())
-                        .ifPresent(collection -> plugin.scheduler().runPlayer(player, () -> openDetail(player, collection, holder.page() + 1)));
+            CollectionDefinition collection = plugin.collectionRegistry().get(holder.collectionId())
+                    .filter(candidate -> canView(player, candidate))
+                    .orElse(null);
+            if (collection == null) {
+                closeForeignMenu(player);
+                return;
+            }
+            int size = top.getSize();
+            if (rawSlot == previousSlot(size) && holder.page() > 0) {
+                CollectionDefinition previousCollection = collection;
+                plugin.scheduler().runPlayer(player, () -> openDetail(player, previousCollection, holder.page() - 1));
+                return;
+            }
+            if (rawSlot == nextSlot(size) && hasDetailNext(collection, holder.page(), size)) {
+                CollectionDefinition nextCollection = collection;
+                plugin.scheduler().runPlayer(player, () -> openDetail(player, nextCollection, holder.page() + 1));
                 return;
             }
             if (rawSlot == backSlot(size)) {
@@ -168,21 +192,40 @@ public final class MenuService implements Listener {
         }
     }
 
-    private ItemStack collectionItem(Player player, CollectionDefinition collection) {
-        long progress = plugin.progressService().cachedProgress(player.getUniqueId(), collection.id());
-        long nextGoal = collection.nextTier(progress).map(CollectionTier::goal).orElse(collection.highestUnlockedGoal(progress));
-        int unlocked = 0;
-        for (CollectionTier tier : collection.tiers()) {
-            if (progress >= tier.goal()) {
-                unlocked++;
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        Inventory top = event.getView().getTopInventory();
+        boolean mainMenu = top.getHolder() instanceof MainMenuHolder;
+        boolean detailMenu = top.getHolder() instanceof DetailMenuHolder;
+        if (!mainMenu && !detailMenu) {
+            return;
+        }
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            event.setCancelled(true);
+            return;
+        }
+        if ((mainMenu && !((MainMenuHolder) top.getHolder()).ownerId().equals(player.getUniqueId()))
+                || (detailMenu && !((DetailMenuHolder) top.getHolder()).ownerId().equals(player.getUniqueId()))) {
+            event.setCancelled(true);
+            closeForeignMenu(player);
+            return;
+        }
+        int topSize = top.getSize();
+        for (int rawSlot : event.getRawSlots()) {
+            if (rawSlot >= 0 && rawSlot < topSize) {
+                event.setCancelled(true);
+                return;
             }
         }
-        Map<String, String> placeholders = new HashMap<>();
-        placeholders.put("progress", Longs.format(progress));
-        placeholders.put("next_goal", Longs.format(nextGoal));
-        placeholders.put("tier", String.valueOf(unlocked));
-        placeholders.put("collection", Text.color(collection.displayName()));
-        placeholders.put("collection_id", collection.id());
+    }
+
+    private void closeForeignMenu(Player player) {
+        plugin.scheduler().runPlayer(player, player::closeInventory);
+    }
+
+    private ItemStack collectionItem(Player player, CollectionDefinition collection) {
+        long progress = plugin.progressService().cachedProgress(player.getUniqueId(), collection.id());
+        Map<String, String> placeholders = collectionPlaceholders(collection, progress);
 
         ItemStack item = displayItem(collection.displayItem());
         ItemMeta meta = item.getItemMeta();
@@ -212,7 +255,14 @@ public final class MenuService implements Listener {
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("goal", Longs.format(tier.goal()));
             placeholders.put("progress", Longs.format(progress));
+            placeholders.put("raw_progress", String.valueOf(progress));
+            placeholders.put("remaining", Longs.format(Math.max(0, tier.goal() - progress)));
+            placeholders.put("percent", String.valueOf(percent(progress, tier.goal())));
+            placeholders.put("progress_bar", progressBar(progress, tier.goal()));
             placeholders.put("collection", Text.color(collection.displayName()));
+            placeholders.put("collection_id", collection.id());
+            placeholders.put("set", collection.category());
+            placeholders.put("category", collection.category());
             placeholders.put("tier", tier.id());
             List<Component> lore = config.getStringList(unlocked ? "detail.tier-lore.unlocked" : "detail.tier-lore.locked").stream()
                     .map(line -> Text.component(plugin.hooks().placeholders(player, Text.placeholders(line, placeholders))))
@@ -307,16 +357,14 @@ public final class MenuService implements Listener {
         return slot == previousSlot(size) || slot == backSlot(size) || slot == nextSlot(size);
     }
 
-    private boolean hasMainNext(int page, int size) {
+    private boolean hasMainNext(Player player, int page, int size) {
         int nextStart = (page + 1) * contentSlots(size).length;
-        return nextStart < plugin.collectionRegistry().enabledCollections().size();
+        return nextStart < visibleCollections(player).size();
     }
 
-    private boolean hasDetailNext(DetailMenuHolder holder, int size) {
-        int nextStart = (holder.page() + 1) * contentSlots(size).length;
-        return plugin.collectionRegistry().get(holder.collectionId())
-                .map(collection -> nextStart < collection.tiers().size())
-                .orElse(false);
+    private boolean hasDetailNext(CollectionDefinition collection, int page, int size) {
+        int nextStart = (page + 1) * contentSlots(size).length;
+        return nextStart < collection.tiers().size();
     }
 
     private int previousSlot(int size) {
@@ -329,5 +377,61 @@ public final class MenuService implements Listener {
 
     private int nextSlot(int size) {
         return size - 1;
+    }
+
+    private List<CollectionDefinition> visibleCollections(Player player) {
+        return plugin.collectionRegistry().enabledCollections().stream()
+                .filter(collection -> canView(player, collection))
+                .toList();
+    }
+
+    private boolean canView(Player player, CollectionDefinition collection) {
+        long progress = plugin.progressService().cachedProgress(player.getUniqueId(), collection.id());
+        return collection.enabled() && collection.visibleTo(player, progress);
+    }
+
+    private Map<String, String> collectionPlaceholders(CollectionDefinition collection, long progress) {
+        long nextGoal = collection.nextTier(progress).map(CollectionTier::goal).orElse(collection.highestUnlockedGoal(progress));
+        long maxGoal = collection.maxGoal();
+        int unlocked = collection.unlockedTierCount(progress);
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("progress", Longs.format(progress));
+        placeholders.put("raw_progress", String.valueOf(progress));
+        placeholders.put("next_goal", Longs.format(nextGoal));
+        placeholders.put("goal", Longs.format(nextGoal));
+        placeholders.put("max_goal", Longs.format(maxGoal));
+        placeholders.put("remaining", Longs.format(Math.max(0, nextGoal - progress)));
+        placeholders.put("percent", String.valueOf(percent(progress, nextGoal)));
+        placeholders.put("max_percent", String.valueOf(percent(Math.min(progress, maxGoal), maxGoal)));
+        placeholders.put("progress_bar", progressBar(progress, nextGoal));
+        placeholders.put("max_progress_bar", progressBar(Math.min(progress, maxGoal), maxGoal));
+        placeholders.put("tier", String.valueOf(unlocked));
+        placeholders.put("tier_count", String.valueOf(unlocked));
+        placeholders.put("total_tiers", String.valueOf(collection.tiers().size()));
+        placeholders.put("maxed", collection.maxed(progress) ? "yes" : "no");
+        placeholders.put("collection", Text.color(collection.displayName()));
+        placeholders.put("collection_id", collection.id());
+        placeholders.put("set", collection.category());
+        placeholders.put("category", collection.category());
+        return placeholders;
+    }
+
+    private int percent(long progress, long goal) {
+        if (goal <= 0) {
+            return 100;
+        }
+        return (int) Math.min(100D, Math.max(0D, (progress * 100D) / goal));
+    }
+
+    private String progressBar(long progress, long goal) {
+        int length = Math.max(1, Math.min(config.getInt("progress-bar.length", 20), 100));
+        String filled = config.getString("progress-bar.filled", "&a|");
+        String empty = config.getString("progress-bar.empty", "&7|");
+        int filledCount = goal <= 0 ? length : (int) Math.floor(Math.min(1D, Math.max(0D, progress / (double) goal)) * length);
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < length; index++) {
+            builder.append(index < filledCount ? filled : empty);
+        }
+        return builder.toString();
     }
 }

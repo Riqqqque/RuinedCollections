@@ -11,6 +11,8 @@ public interface SchedulerAdapter {
 
     TaskHandle runPlayer(Player player, Runnable runnable);
 
+    TaskHandle runPlayer(Player player, Runnable runnable, Runnable retired);
+
     TaskHandle runSender(CommandSender sender, Runnable runnable);
 
     TaskHandle runTimerAsync(Runnable runnable, long delayTicks, long periodTicks);

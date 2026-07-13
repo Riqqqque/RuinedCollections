@@ -5,14 +5,21 @@ import org.bukkit.inventory.InventoryHolder;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 public final class MainMenuHolder implements InventoryHolder {
+    private final UUID ownerId;
     private final int page;
     private final Map<Integer, String> collectionSlots = new HashMap<>();
     private Inventory inventory;
 
-    public MainMenuHolder(int page) {
+    public MainMenuHolder(UUID ownerId, int page) {
+        this.ownerId = ownerId;
         this.page = page;
+    }
+
+    public UUID ownerId() {
+        return ownerId;
     }
 
     public int page() {

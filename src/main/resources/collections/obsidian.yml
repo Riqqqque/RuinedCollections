@@ -1,6 +1,10 @@
 id: obsidian
 enabled: true
+set: blocks
+permission: ''
+hidden-until-progress: false
 display-name: '&5Obsidian'
+menu-title: '&8Obsidian Collection'
 description:
   - '&7Mine obsidian to unlock stronger rewards.'
 display-item:

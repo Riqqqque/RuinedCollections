@@ -88,6 +88,8 @@ Example:
 /rc info oak_log
 ```
 
+This shows the collection set, permission gate, hidden-until-progress setting, source count, and tier goals.
+
 ### Open Menu
 
 ```text
@@ -256,3 +258,5 @@ ruinedcollections.admin.diagnostics
 ruinedcollections.menu
 ruinedcollections.view
 ```
+
+Collection files can also define their own permission node with `permission: some.node`. Those nodes are intentionally dynamic, so they do not need to be listed in `plugin.yml`.

@@ -1,6 +1,10 @@
 id: oak_log
 enabled: true
+set: blocks
+permission: ''
+hidden-until-progress: false
 display-name: '&6Oak Log'
+menu-title: '&8Oak Log Collection'
 description:
   - '&7Collect oak logs by chopping trees.'
 display-item:

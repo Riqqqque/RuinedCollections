@@ -34,10 +34,23 @@ public final class PaperSchedulerAdapter implements SchedulerAdapter {
 
     @Override
     public TaskHandle runPlayer(Player player, Runnable runnable) {
+        return runPlayer(player, runnable, () -> {
+        });
+    }
+
+    @Override
+    public TaskHandle runPlayer(Player player, Runnable runnable, Runnable retired) {
         if (!plugin.isEnabled()) {
+            retired.run();
             return NoOpTaskHandle.INSTANCE;
         }
-        BukkitTask task = Bukkit.getScheduler().runTask(plugin, runnable);
+        BukkitTask task = Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) {
+                runnable.run();
+            } else {
+                retired.run();
+            }
+        });
         return task::cancel;
     }
 

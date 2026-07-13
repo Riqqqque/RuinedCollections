@@ -190,9 +190,7 @@ public final class DiagnosticService {
                     writer.write(stackTrace(throwable));
                     writer.newLine();
                 }
-                if (level.intValue() >= Level.WARNING.intValue()) {
-                    writer.flush();
-                }
+                writer.flush();
             } catch (IOException exception) {
                 enabled = false;
                 plugin.getLogger().log(Level.SEVERE, "Could not write diagnostics log.", exception);

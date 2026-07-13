@@ -12,6 +12,7 @@ import com.rique.ruinedcollections.listener.ItemCollectionListener;
 import com.rique.ruinedcollections.listener.PlayerConnectionListener;
 import com.rique.ruinedcollections.listener.TrackingFilter;
 import com.rique.ruinedcollections.menu.MenuService;
+import com.rique.ruinedcollections.metrics.MetricsService;
 import com.rique.ruinedcollections.platform.ServerCompatibility;
 import com.rique.ruinedcollections.reward.RewardService;
 import com.rique.ruinedcollections.scheduler.SchedulerAdapter;
@@ -21,6 +22,7 @@ import com.rique.ruinedcollections.storage.DataSnapshotService;
 import com.rique.ruinedcollections.storage.DatabaseManager;
 import com.rique.ruinedcollections.storage.PlacedBlockService;
 import com.rique.ruinedcollections.storage.ProgressService;
+import com.rique.ruinedcollections.storage.StorageType;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -39,6 +41,7 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
     private DataSnapshotService snapshots;
     private DiagnosticService diagnostics;
     private LeaderboardService leaderboards;
+    private MetricsService metricsService;
     private SchedulerAdapter scheduler;
     private ServerCompatibility compatibility;
     private TrackingFilter trackingFilter;
@@ -53,7 +56,7 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         compatibility = ServerCompatibility.inspect();
         compatibility.log(diagnostics);
         if (compatibility.blocksStartup()) {
-            diagnostics.warn("startup", "Plugin disabled because the server is outside the supported version range");
+            diagnostics.warn("startup", "Plugin disabled because the server platform or version is unsupported");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -83,6 +86,7 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         menuService.load();
         snapshots = new DataSnapshotService(this, repository);
         leaderboards = new LeaderboardService(this);
+        metricsService = new MetricsService(this);
 
         hooks.start();
         placedBlocks.start();
@@ -90,6 +94,7 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         registerCommands();
         progressService.start();
         leaderboards.start();
+        metricsService.start();
         diagnostics.info("startup", "Plugin enable completed", DiagnosticService.fields("collections", collectionRegistry.all().size()));
     }
 
@@ -98,11 +103,17 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         if (diagnostics != null) {
             diagnostics.info("shutdown", "Plugin disable started");
         }
+        if (leaderboards != null) {
+            leaderboards.stop();
+        }
         if (progressService != null) {
             progressService.stop();
         }
-        if (leaderboards != null) {
-            leaderboards.stop();
+        if (placedBlocks != null) {
+            placedBlocks.stop();
+        }
+        if (metricsService != null) {
+            metricsService.stop();
         }
         if (snapshots != null) {
             snapshots.close();
@@ -132,11 +143,21 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
         if (trackingFilter != null) {
             trackingFilter.load();
         }
+        if (placedBlocks != null) {
+            placedBlocks.reload();
+        }
+        if (hooks != null) {
+            hooks.reload();
+        }
         if (progressService != null) {
+            progressService.reload();
             progressService.recheckOnlineRewards();
         }
         if (leaderboards != null) {
             leaderboards.reload();
+        }
+        if (metricsService != null) {
+            metricsService.start();
         }
         if (!issues.isEmpty()) {
             diagnostics.warn("collections", "Reloaded with collection issues", DiagnosticService.fields("issues", issues.size()));
@@ -150,6 +171,10 @@ public final class RuinedCollectionsPlugin extends JavaPlugin {
 
     public CollectionRepository repository() {
         return repository;
+    }
+
+    public StorageType storageType() {
+        return databaseManager.storageType();
     }
 
     public HookManager hooks() {

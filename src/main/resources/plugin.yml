@@ -1,6 +1,6 @@
 name: RuinedCollections
 main: com.rique.ruinedcollections.RuinedCollectionsPlugin
-version: ${project.version}
+version: ${pluginVersion}
 api-version: '1.21'
 author: Rique
 description: Highly configurable player collections for Paper and Folia servers.
@@ -10,9 +10,9 @@ softdepend:
   - Vault
   - LuckPerms
 libraries:
-  - org.xerial:sqlite-jdbc:${sqlite-jdbc.version}
-  - com.mysql:mysql-connector-j:${mysql-connector.version}
-  - com.google.protobuf:protobuf-java:${protobuf.version}
+  - org.xerial:sqlite-jdbc:${sqliteJdbcVersion}
+  - com.mysql:mysql-connector-j:${mysqlConnectorVersion}
+  - com.google.protobuf:protobuf-java:${protobufVersion}
 commands:
   ruinedcollections:
     description: Main admin command for RuinedCollections.

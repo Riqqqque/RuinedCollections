@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -21,8 +22,13 @@ public final class CollectionRepository {
     private final DataSource dataSource;
     private final StorageType storageType;
     private final String prefix;
-    private final ExecutorService executor = Executors.newFixedThreadPool(2, task -> {
-        Thread thread = new Thread(task, "RuinedCollections-Storage");
+    private final ExecutorService readExecutor = Executors.newFixedThreadPool(2, task -> {
+        Thread thread = new Thread(task, "RuinedCollections-Storage-Read");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final ExecutorService writeExecutor = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "RuinedCollections-Storage-Write");
         thread.setDaemon(true);
         return thread;
     });
@@ -40,7 +46,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, readExecutor);
     }
 
     public PlayerData loadPlayerSync(UUID playerId) throws SQLException {
@@ -70,17 +76,33 @@ public final class CollectionRepository {
     }
 
     public CompletableFuture<Void> addProgressBatch(Map<ProgressKey, Long> progress) {
+        return addProgressBatch(progress, Map.of());
+    }
+
+    public CompletableFuture<Void> addProgressBatch(Map<ProgressKey, Long> progress, Map<String, Long> maxProgressByCollection) {
         return CompletableFuture.runAsync(() -> {
             try {
-                addProgressBatchSync(progress);
+                addProgressBatchSync(progress, maxProgressByCollection);
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, writeExecutor);
+    }
+
+    public void addProgressBatchOrderedSync(Map<ProgressKey, Long> progress, Map<String, Long> maxProgressByCollection) throws SQLException {
+        awaitWrite(addProgressBatch(progress, maxProgressByCollection));
     }
 
     public void addProgressBatchSync(Map<ProgressKey, Long> progress) throws SQLException {
+        addProgressBatchSync(progress, Map.of());
+    }
+
+    public void addProgressBatchSync(Map<ProgressKey, Long> progress, Map<String, Long> maxProgressByCollection) throws SQLException {
         if (progress.isEmpty()) {
+            return;
+        }
+        if (hasCaps(maxProgressByCollection)) {
+            addProgressBatchCappedSync(progress, maxProgressByCollection);
             return;
         }
         String sql = storageType == StorageType.SQLITE
@@ -117,6 +139,53 @@ public final class CollectionRepository {
         }
     }
 
+    private void addProgressBatchCappedSync(Map<ProgressKey, Long> progress, Map<String, Long> maxProgressByCollection) throws SQLException {
+        String boundedProgress = "CASE WHEN progress > ? THEN ? ELSE progress + ? END";
+        String cappedProgress = storageType == StorageType.SQLITE
+                ? "CASE WHEN ? > 0 THEN MIN(?, " + boundedProgress + ") ELSE " + boundedProgress + " END"
+                : "CASE WHEN ? > 0 THEN LEAST(?, " + boundedProgress + ") ELSE " + boundedProgress + " END";
+        String sql = storageType == StorageType.SQLITE
+                ? "INSERT INTO " + prefix + "player_progress (player_uuid, collection_id, progress, updated_at) VALUES (?, ?, ?, ?) "
+                + "ON CONFLICT(player_uuid, collection_id) DO UPDATE SET progress = " + cappedProgress + ", updated_at = ?"
+                : "INSERT INTO " + prefix + "player_progress (player_uuid, collection_id, progress, updated_at) VALUES (?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE progress = " + cappedProgress + ", updated_at = ?";
+        long now = System.currentTimeMillis();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            connection.setAutoCommit(false);
+            try {
+                for (Map.Entry<ProgressKey, Long> entry : progress.entrySet()) {
+                    long amount = Math.max(0, entry.getValue());
+                    if (amount == 0) {
+                        continue;
+                    }
+                    ProgressKey key = entry.getKey();
+                    long maxProgress = Math.max(0, maxProgressByCollection.getOrDefault(key.collectionId(), 0L));
+                    long insertedProgress = maxProgress > 0 ? Math.min(amount, maxProgress) : amount;
+                    statement.setString(1, key.playerId().toString());
+                    statement.setString(2, key.collectionId());
+                    statement.setLong(3, insertedProgress);
+                    statement.setLong(4, now);
+                    statement.setLong(5, maxProgress);
+                    statement.setLong(6, maxProgress);
+                    statement.setLong(7, Long.MAX_VALUE - amount);
+                    statement.setLong(8, Long.MAX_VALUE);
+                    statement.setLong(9, amount);
+                    statement.setLong(10, Long.MAX_VALUE - amount);
+                    statement.setLong(11, Long.MAX_VALUE);
+                    statement.setLong(12, amount);
+                    statement.setLong(13, now);
+                    statement.addBatch();
+                }
+                statement.executeBatch();
+                connection.commit();
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            }
+        }
+    }
+
     public CompletableFuture<Void> setProgress(UUID playerId, String collectionId, long amount) {
         return CompletableFuture.runAsync(() -> {
             try {
@@ -124,7 +193,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, writeExecutor);
     }
 
     public void setProgressSync(UUID playerId, String collectionId, long amount) throws SQLException {
@@ -150,7 +219,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, writeExecutor);
     }
 
     public void savePlayerNameSync(UUID playerId, String playerName) throws SQLException {
@@ -179,7 +248,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, readExecutor);
     }
 
     public List<LeaderboardRow> loadLeaderboardSync(String collectionId, int limit) throws SQLException {
@@ -206,6 +275,51 @@ public final class CollectionRepository {
         return rows;
     }
 
+    public CompletableFuture<List<LeaderboardRow>> loadCategoryLeaderboard(String categoryId, List<String> collectionIds, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return loadCategoryLeaderboardSync(categoryId, collectionIds, limit);
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, readExecutor);
+    }
+
+    public List<LeaderboardRow> loadCategoryLeaderboardSync(String categoryId, List<String> collectionIds, int limit) throws SQLException {
+        List<String> normalizedIds = collectionIds == null
+                ? List.of()
+                : collectionIds.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
+        if (normalizedIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(",", normalizedIds.stream().map(ignored -> "?").toList());
+        List<LeaderboardRow> rows = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT p.player_uuid, n.player_name, SUM(p.progress) AS progress "
+                             + "FROM " + prefix + "player_progress p "
+                             + "LEFT JOIN " + prefix + "player_names n ON p.player_uuid = n.player_uuid "
+                             + "WHERE p.collection_id IN (" + placeholders + ") AND p.progress > 0 "
+                             + "GROUP BY p.player_uuid, n.player_name "
+                             + "ORDER BY progress DESC, p.player_uuid ASC LIMIT ?")) {
+            int index = 1;
+            for (String collectionId : normalizedIds) {
+                statement.setString(index++, collectionId);
+            }
+            statement.setInt(index, Math.max(1, limit));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    rows.add(new LeaderboardRow(
+                            UUID.fromString(resultSet.getString("player_uuid")),
+                            resultSet.getString("player_name"),
+                            Math.max(0, resultSet.getLong("progress"))
+                    ));
+                }
+            }
+        }
+        return rows;
+    }
+
     public CompletableFuture<Long> loadPlayerRank(UUID playerId, String collectionId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -213,7 +327,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, readExecutor);
     }
 
     public long loadPlayerRankSync(UUID playerId, String collectionId) throws SQLException {
@@ -251,7 +365,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, writeExecutor);
     }
 
     public boolean claimTierSync(UUID playerId, String collectionId, String tierId) throws SQLException {
@@ -275,7 +389,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, writeExecutor);
     }
 
     public void applySnapshotSync(List<ProgressRow> progressRows, List<ClaimedRow> claimedRows, List<PlayerNameRow> playerNames) throws SQLException {
@@ -346,7 +460,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, writeExecutor);
     }
 
     public void unclaimTierSync(UUID playerId, String collectionId, String tierId) throws SQLException {
@@ -360,84 +474,62 @@ public final class CollectionRepository {
         }
     }
 
-    public CompletableFuture<List<ProgressRow>> loadAllProgress() {
+    public CompletableFuture<SnapshotData> loadSnapshot() {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                return loadAllProgressSync();
+                return loadSnapshotSync();
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, readExecutor);
     }
 
-    public List<ProgressRow> loadAllProgressSync() throws SQLException {
-        List<ProgressRow> rows = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT player_uuid, collection_id, progress FROM " + prefix + "player_progress");
-             ResultSet resultSet = statement.executeQuery()) {
-            while (resultSet.next()) {
-                rows.add(new ProgressRow(
-                        UUID.fromString(resultSet.getString("player_uuid")),
-                        resultSet.getString("collection_id"),
-                        Math.max(0, resultSet.getLong("progress"))
-                ));
-            }
-        }
-        return rows;
-    }
-
-    public CompletableFuture<List<ClaimedRow>> loadAllClaimed() {
-        return CompletableFuture.supplyAsync(() -> {
+    public SnapshotData loadSnapshotSync() throws SQLException {
+        List<ProgressRow> progressRows = new ArrayList<>();
+        List<ClaimedRow> claimedRows = new ArrayList<>();
+        List<PlayerNameRow> playerNames = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
             try {
-                return loadAllClaimedSync();
-            } catch (SQLException exception) {
-                throw new StorageException(exception);
-            }
-        }, executor);
-    }
-
-    public List<ClaimedRow> loadAllClaimedSync() throws SQLException {
-        List<ClaimedRow> rows = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT player_uuid, collection_id, tier_id FROM " + prefix + "claimed_tiers");
-             ResultSet resultSet = statement.executeQuery()) {
-            while (resultSet.next()) {
-                rows.add(new ClaimedRow(
-                        UUID.fromString(resultSet.getString("player_uuid")),
-                        resultSet.getString("collection_id"),
-                        resultSet.getString("tier_id")
-                ));
-            }
-        }
-        return rows;
-    }
-
-    public CompletableFuture<List<PlayerNameRow>> loadAllPlayerNames() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return loadAllPlayerNamesSync();
-            } catch (SQLException exception) {
-                throw new StorageException(exception);
-            }
-        }, executor);
-    }
-
-    public List<PlayerNameRow> loadAllPlayerNamesSync() throws SQLException {
-        List<PlayerNameRow> rows = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT player_uuid, player_name FROM " + prefix + "player_names");
-             ResultSet resultSet = statement.executeQuery()) {
-            while (resultSet.next()) {
-                rows.add(new PlayerNameRow(
-                        UUID.fromString(resultSet.getString("player_uuid")),
-                        resultSet.getString("player_name")
-                ));
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT player_uuid, collection_id, progress FROM " + prefix + "player_progress");
+                     ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        progressRows.add(new ProgressRow(
+                                UUID.fromString(resultSet.getString("player_uuid")),
+                                resultSet.getString("collection_id"),
+                                Math.max(0, resultSet.getLong("progress"))
+                        ));
+                    }
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT player_uuid, collection_id, tier_id FROM " + prefix + "claimed_tiers");
+                     ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        claimedRows.add(new ClaimedRow(
+                                UUID.fromString(resultSet.getString("player_uuid")),
+                                resultSet.getString("collection_id"),
+                                resultSet.getString("tier_id")
+                        ));
+                    }
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT player_uuid, player_name FROM " + prefix + "player_names");
+                     ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        playerNames.add(new PlayerNameRow(
+                                UUID.fromString(resultSet.getString("player_uuid")),
+                                resultSet.getString("player_name")
+                        ));
+                    }
+                }
+                connection.commit();
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
             }
         }
-        return rows;
+        return new SnapshotData(progressRows, claimedRows, playerNames);
     }
 
     public CompletableFuture<Set<BlockLocationKey>> loadPlacedBlocks() {
@@ -447,7 +539,7 @@ public final class CollectionRepository {
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, readExecutor);
     }
 
     public Set<BlockLocationKey> loadPlacedBlocksSync() throws SQLException {
@@ -468,52 +560,110 @@ public final class CollectionRepository {
         return blocks;
     }
 
-    public CompletableFuture<Void> addPlacedBlock(BlockLocationKey key, String material) {
+    public CompletableFuture<Void> applyPlacedBlockBatch(Map<BlockLocationKey, String> upserts, Set<BlockLocationKey> removals) {
+        Map<BlockLocationKey, String> capturedUpserts = Map.copyOf(upserts);
+        Set<BlockLocationKey> capturedRemovals = Set.copyOf(removals);
         return CompletableFuture.runAsync(() -> {
-            String sql = storageType == StorageType.SQLITE
-                    ? "INSERT OR REPLACE INTO " + prefix + "placed_blocks (world, x, y, z, material, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-                    : "REPLACE INTO " + prefix + "placed_blocks (world, x, y, z, material, created_at) VALUES (?, ?, ?, ?, ?, ?)";
-            try (Connection connection = dataSource.getConnection();
-                 PreparedStatement statement = connection.prepareStatement(sql)) {
-                statement.setString(1, key.world());
-                statement.setInt(2, key.x());
-                statement.setInt(3, key.y());
-                statement.setInt(4, key.z());
-                statement.setString(5, material);
-                statement.setLong(6, System.currentTimeMillis());
-                statement.executeUpdate();
+            try {
+                applyPlacedBlockBatchSync(capturedUpserts, capturedRemovals);
             } catch (SQLException exception) {
                 throw new StorageException(exception);
             }
-        }, executor);
+        }, writeExecutor);
     }
 
-    public CompletableFuture<Void> removePlacedBlock(BlockLocationKey key) {
-        return CompletableFuture.runAsync(() -> {
-            try (Connection connection = dataSource.getConnection();
-                 PreparedStatement statement = connection.prepareStatement(
-                         "DELETE FROM " + prefix + "placed_blocks WHERE world=? AND x=? AND y=? AND z=?")) {
-                statement.setString(1, key.world());
-                statement.setInt(2, key.x());
-                statement.setInt(3, key.y());
-                statement.setInt(4, key.z());
-                statement.executeUpdate();
+    public void applyPlacedBlockBatchOrderedSync(Map<BlockLocationKey, String> upserts, Set<BlockLocationKey> removals) throws SQLException {
+        awaitWrite(applyPlacedBlockBatch(upserts, removals));
+    }
+
+    public void awaitWrites() throws SQLException {
+        awaitWrite(CompletableFuture.runAsync(() -> {
+        }, writeExecutor));
+    }
+
+    private void applyPlacedBlockBatchSync(Map<BlockLocationKey, String> upserts, Set<BlockLocationKey> removals) throws SQLException {
+        if (upserts.isEmpty() && removals.isEmpty()) {
+            return;
+        }
+        String upsertSql = storageType == StorageType.SQLITE
+                ? "INSERT OR REPLACE INTO " + prefix + "placed_blocks (world, x, y, z, material, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+                : "REPLACE INTO " + prefix + "placed_blocks (world, x, y, z, material, created_at) VALUES (?, ?, ?, ?, ?, ?)";
+        String removeSql = "DELETE FROM " + prefix + "placed_blocks WHERE world=? AND x=? AND y=? AND z=?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement upsertStatement = connection.prepareStatement(upsertSql);
+             PreparedStatement removeStatement = connection.prepareStatement(removeSql)) {
+            connection.setAutoCommit(false);
+            try {
+                for (BlockLocationKey key : removals) {
+                    setBlockLocation(removeStatement, key);
+                    removeStatement.addBatch();
+                }
+                removeStatement.executeBatch();
+                long now = System.currentTimeMillis();
+                for (Map.Entry<BlockLocationKey, String> entry : upserts.entrySet()) {
+                    setBlockLocation(upsertStatement, entry.getKey());
+                    upsertStatement.setString(5, entry.getValue());
+                    upsertStatement.setLong(6, now);
+                    upsertStatement.addBatch();
+                }
+                upsertStatement.executeBatch();
+                connection.commit();
             } catch (SQLException exception) {
-                throw new StorageException(exception);
+                connection.rollback();
+                throw exception;
             }
-        }, executor);
+        }
+    }
+
+    private void setBlockLocation(PreparedStatement statement, BlockLocationKey key) throws SQLException {
+        statement.setString(1, key.world());
+        statement.setInt(2, key.x());
+        statement.setInt(3, key.y());
+        statement.setInt(4, key.z());
     }
 
     public void close() {
-        executor.shutdown();
+        writeExecutor.shutdown();
+        readExecutor.shutdown();
         try {
-            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
+            if (!writeExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                writeExecutor.shutdownNow();
+            }
+            if (!readExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                readExecutor.shutdownNow();
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            executor.shutdownNow();
+            writeExecutor.shutdownNow();
+            readExecutor.shutdownNow();
         }
+    }
+
+    private void awaitWrite(CompletableFuture<Void> future) throws SQLException {
+        try {
+            future.get();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new SQLException("Interrupted while waiting for an ordered storage write", exception);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof StorageException storageException && storageException.getCause() instanceof SQLException sqlException) {
+                throw sqlException;
+            }
+            throw new SQLException("Ordered storage write failed", cause);
+        }
+    }
+
+    private boolean hasCaps(Map<String, Long> maxProgressByCollection) {
+        if (maxProgressByCollection == null || maxProgressByCollection.isEmpty()) {
+            return false;
+        }
+        for (long value : maxProgressByCollection.values()) {
+            if (value > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static final class StorageException extends RuntimeException {

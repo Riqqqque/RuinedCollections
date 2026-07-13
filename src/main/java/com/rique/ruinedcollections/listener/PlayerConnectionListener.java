@@ -15,7 +15,9 @@ public final class PlayerConnectionListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        plugin.progressService().load(event.getPlayer());
+        if (plugin.progressService().shouldLoadOnJoin()) {
+            plugin.progressService().load(event.getPlayer());
+        }
     }
 
     @EventHandler

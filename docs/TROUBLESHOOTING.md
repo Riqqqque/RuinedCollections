@@ -7,7 +7,7 @@ Use this page when something does not behave the way you expect.
 Check:
 
 - Server is Paper or Folia, not vanilla.
-- Server is Paper or Folia `1.21` through `26.1.2`.
+- Server is Paper or Folia `1.21` through `26.2`.
 - The plugin jar can run on Java `21+`, and the server is using the Java version required by its Paper/Folia version. Paper/Folia `26.1+` requires Java `25`.
 - The jar is in the server `plugins` folder.
 - Paper can download the declared SQLite/MySQL libraries on first boot, or those libraries already exist in the server library cache.
@@ -161,4 +161,4 @@ For offline progress edits, use a UUID when the player is not cached.
 
 ## Leaderboard Shows Unknown Names
 
-The plugin saves player names when players join and uses those saved names for offline leaderboard rows. If an older UUID has progress but no saved name yet, it will use `leaderboards.unknown-name-format` until the player joins or an admin edits that player by a cached name.
+The plugin saves player names when players join and uses those saved names for offline collection and set leaderboard rows. If an older UUID has progress but no saved name yet, it will use `leaderboards.unknown-name-format` until the player joins or an admin edits that player by a cached name.

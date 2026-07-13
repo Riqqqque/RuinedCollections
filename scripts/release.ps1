@@ -13,7 +13,7 @@ if ($Version.StartsWith('v')) {
 }
 
 if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$') {
-    throw "Version must look like 1.0.13."
+    throw "Version must look like 1.0.15."
 }
 
 $tag = "v$Version"
@@ -28,19 +28,35 @@ if (git tag --list $tag) {
     throw "Tag $tag already exists."
 }
 
-$pomPath = Join-Path $root 'pom.xml'
-[xml]$pom = Get-Content $pomPath
-$currentVersion = $pom.project.version
+$propertiesPath = Join-Path $root 'gradle.properties'
+$properties = Get-Content $propertiesPath
+$currentVersionLine = $properties | Where-Object { $_ -match '^pluginVersion=' } | Select-Object -First 1
+if (-not $currentVersionLine) {
+    throw "gradle.properties does not contain pluginVersion."
+}
+$currentVersion = $currentVersionLine.Substring('pluginVersion='.Length)
 if ($currentVersion -ne $Version) {
-    mvn -B versions:set "-DnewVersion=$Version" "-DgenerateBackupPoms=false"
+    $properties = $properties | ForEach-Object {
+        if ($_ -match '^pluginVersion=') {
+            "pluginVersion=$Version"
+        } else {
+            $_
+        }
+    }
+    Set-Content -Path $propertiesPath -Value $properties -Encoding UTF8
 }
 
-mvn -B "-Dpaper.api.version=26.1.2.build.66-stable" -DskipTests compile
-mvn -B clean package
+$paperHeaders = @{
+    'User-Agent' = 'Riqqqque/RuinedCollections (https://github.com/Riqqqque/RuinedCollections)'
+}
+$paperBuild = (Invoke-RestMethod 'https://fill.papermc.io/v3/projects/paper/versions/26.2/builds' -Headers $paperHeaders)[0]
+$paperApiVersion = "26.2.build.$($paperBuild.id)-$($paperBuild.channel.ToLowerInvariant())"
+.\gradlew.bat --no-daemon "-PpaperApiVersion=$paperApiVersion" clean compileJava
+.\gradlew.bat --no-daemon clean build
 
-$jar = Join-Path $root 'target\RuinedCollections.jar'
+$jar = Join-Path $root 'build\libs\RuinedCollections.jar'
 if (-not (Test-Path $jar)) {
-    throw "Build did not create target\RuinedCollections.jar."
+    throw "Build did not create build\libs\RuinedCollections.jar."
 }
 
 $jarSize = (Get-Item $jar).Length
@@ -70,7 +86,7 @@ if ($pluginYml -notmatch "version:\s+$([Regex]::Escape($Version))") {
 }
 
 if (git status --porcelain) {
-    git add pom.xml
+    git add gradle.properties
     git commit -m "Release $Version"
 }
 

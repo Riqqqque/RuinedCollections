@@ -35,16 +35,16 @@ RuinedWardrobe currently provides:
 3. Keep permissions namespaced and explicit: `ruinedcollections.*` and `ruinedwardrobe.*`.
 4. Keep storage tables namespaced and configurable where appropriate.
 5. Keep docs language consistent around backups, diagnostics, permissions, and storage safety.
-6. Do not force RuinedCollections to match RuinedWardrobe's runtime target unless the project requirement changes. RuinedCollections remains Paper/Folia `1.21` through `26.1.2` with Java `21` bytecode; server Java follows the Paper/Folia version being run.
+6. Do not force RuinedCollections to match RuinedWardrobe's runtime target unless the project requirement changes. RuinedCollections remains Paper/Folia `1.21` through `26.2` with Java `21` bytecode; server Java follows the Paper/Folia version being run.
 7. Borrow proven operational ideas from RuinedWardrobe when they fit, especially dry-run safety, stronger diagnostics, config backup behavior, and public events.
 
 ## Current Intentional Differences
 
 | Area | RuinedCollections | RuinedWardrobe |
 | --- | --- | --- |
-| Build | Maven | Gradle |
+| Build | Gradle | Gradle |
 | Java | 21 bytecode; server runtime follows Paper/Folia version | 25 |
-| Platform | Paper/Folia 1.21 through 26.1.2 | Newer Paper/Folia target |
+| Platform | Paper/Folia 1.21 through 26.2 | Newer Paper/Folia target |
 | Main command | `/ruinedcollections`, `/rc`, `/collections` | `/wardrobe`, `/rw` |
 | Data movement | Export/import YAML snapshots | Direct storage migration with digest verification |
 | Logging | Rotating diagnostics log | Dated audit log plus doctor command |

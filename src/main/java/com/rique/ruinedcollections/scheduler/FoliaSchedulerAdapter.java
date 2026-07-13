@@ -22,6 +22,9 @@ public final class FoliaSchedulerAdapter implements SchedulerAdapter {
             return NoOpTaskHandle.INSTANCE;
         }
         ScheduledTask task = Bukkit.getAsyncScheduler().runNow(plugin, ignored -> runnable.run());
+        if (task == null) {
+            return NoOpTaskHandle.INSTANCE;
+        }
         return task::cancel;
     }
 
@@ -36,10 +39,21 @@ public final class FoliaSchedulerAdapter implements SchedulerAdapter {
 
     @Override
     public TaskHandle runPlayer(Player player, Runnable runnable) {
+        return runPlayer(player, runnable, () -> {
+        });
+    }
+
+    @Override
+    public TaskHandle runPlayer(Player player, Runnable runnable, Runnable retired) {
         if (!plugin.isEnabled()) {
+            retired.run();
             return NoOpTaskHandle.INSTANCE;
         }
-        ScheduledTask task = player.getScheduler().run(plugin, ignored -> runnable.run(), null);
+        ScheduledTask task = player.getScheduler().run(plugin, ignored -> runnable.run(), retired);
+        if (task == null) {
+            retired.run();
+            return NoOpTaskHandle.INSTANCE;
+        }
         return task::cancel;
     }
 
@@ -59,10 +73,13 @@ public final class FoliaSchedulerAdapter implements SchedulerAdapter {
         ScheduledTask task = Bukkit.getAsyncScheduler().runAtFixedRate(
                 plugin,
                 ignored -> runnable.run(),
-                Math.max(1L, delayTicks * 50L),
-                Math.max(1L, periodTicks * 50L),
+                ticksToMilliseconds(delayTicks),
+                ticksToMilliseconds(periodTicks),
                 TimeUnit.MILLISECONDS
         );
+        if (task == null) {
+            return NoOpTaskHandle.INSTANCE;
+        }
         return task::cancel;
     }
 
@@ -83,6 +100,13 @@ public final class FoliaSchedulerAdapter implements SchedulerAdapter {
     public void shutdown() {
         Bukkit.getAsyncScheduler().cancelTasks(plugin);
         Bukkit.getGlobalRegionScheduler().cancelTasks(plugin);
+    }
+
+    private long ticksToMilliseconds(long ticks) {
+        if (ticks <= 0) {
+            return 1L;
+        }
+        return ticks > Long.MAX_VALUE / 50L ? Long.MAX_VALUE : ticks * 50L;
     }
 
     private enum NoOpTaskHandle implements TaskHandle {

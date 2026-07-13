@@ -8,10 +8,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ServerCompatibility {
-    public static final String SUPPORTED_RANGE = "1.21 - 26.1.2";
+    public static final String SUPPORTED_RANGE = "1.21 - 26.2";
 
     private static final MinecraftVersion MINIMUM = new MinecraftVersion(1, 21, 0);
-    private static final MinecraftVersion MAXIMUM = new MinecraftVersion(26, 1, 2);
+    private static final MinecraftVersion MAXIMUM = new MinecraftVersion(26, 2, 0);
     private static final Pattern VERSION_PATTERN = Pattern.compile("^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?(?:[-+].*)?$");
 
     private final String serverName;
@@ -68,7 +68,7 @@ public final class ServerCompatibility {
     }
 
     public boolean blocksStartup() {
-        return status == CompatibilityStatus.BELOW_MINIMUM || status == CompatibilityStatus.UNKNOWN_VERSION;
+        return !supportedPlatform || status == CompatibilityStatus.BELOW_MINIMUM || status == CompatibilityStatus.UNKNOWN_VERSION;
     }
 
     public String serverName() {
@@ -92,7 +92,16 @@ public final class ServerCompatibility {
 
     private static boolean isPaperOrFolia(String serverName) {
         String lower = serverName == null ? "" : serverName.toLowerCase(Locale.ROOT);
-        return "paper".equals(lower) || "folia".equals(lower);
+        if ("paper".equals(lower) || "folia".equals(lower)) {
+            return true;
+        }
+        try {
+            Class.forName("io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler", false,
+                    ServerCompatibility.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException ignored) {
+            return false;
+        }
     }
 
     private enum CompatibilityStatus {

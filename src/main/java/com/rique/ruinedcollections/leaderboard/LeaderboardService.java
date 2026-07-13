@@ -8,24 +8,36 @@ import com.rique.ruinedcollections.storage.LeaderboardRow;
 import com.rique.ruinedcollections.util.Longs;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class LeaderboardService {
     private final RuinedCollectionsPlugin plugin;
     private final ConcurrentMap<String, List<LeaderboardEntry>> leaderboards = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, List<LeaderboardEntry>> categoryLeaderboards = new ConcurrentHashMap<>();
     private final ConcurrentMap<RankKey, RankCacheEntry> rankCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<RankKey, Long> rankLoads = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Long> leaderboardLoads = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Long> categoryLeaderboardLoads = new ConcurrentHashMap<>();
+    private final Set<String> pendingLeaderboardRefreshes = ConcurrentHashMap.newKeySet();
+    private final Set<String> pendingCategoryRefreshes = ConcurrentHashMap.newKeySet();
+    private final AtomicLong rankLoadSequence = new AtomicLong();
 
     private SchedulerAdapter.TaskHandle refreshTask;
     private volatile boolean enabled;
     private volatile int limit;
     private volatile long refreshTicks;
     private volatile long rankCacheMillis;
+    private volatile int rankCacheMaxEntries;
     private volatile long generation;
     private volatile String emptyName;
     private volatile String emptyValue;
@@ -46,6 +58,7 @@ public final class LeaderboardService {
     }
 
     public void stop() {
+        enabled = false;
         if (refreshTask != null) {
             refreshTask.cancel();
             refreshTask = null;
@@ -56,9 +69,13 @@ public final class LeaderboardService {
         stop();
         generation++;
         leaderboards.clear();
+        categoryLeaderboards.clear();
         rankCache.clear();
         rankLoads.clear();
         leaderboardLoads.clear();
+        categoryLeaderboardLoads.clear();
+        pendingLeaderboardRefreshes.clear();
+        pendingCategoryRefreshes.clear();
         start();
     }
 
@@ -67,6 +84,24 @@ public final class LeaderboardService {
             return empty(field);
         }
         List<LeaderboardEntry> entries = leaderboards.get(normalize(collectionId));
+        if (entries == null || position > entries.size()) {
+            return empty(field);
+        }
+        LeaderboardEntry entry = entries.get(position - 1);
+        return switch (field.toLowerCase(Locale.ROOT)) {
+            case "name" -> entry.name();
+            case "uuid" -> entry.playerId().toString();
+            case "raw", "raw_progress" -> String.valueOf(entry.progress());
+            case "progress", "value" -> Longs.format(entry.progress());
+            default -> "";
+        };
+    }
+
+    public String topCategoryValue(String categoryId, int position, String field) {
+        if (!enabled || position <= 0) {
+            return empty(field);
+        }
+        List<LeaderboardEntry> entries = categoryLeaderboards.get(normalize(categoryId));
         if (entries == null || position > entries.size()) {
             return empty(field);
         }
@@ -103,16 +138,41 @@ public final class LeaderboardService {
             return;
         }
         long currentGeneration = generation;
+        pruneRankCache(System.currentTimeMillis());
         List<String> collectionIds = plugin.collectionRegistry().enabledCollections().stream()
                 .map(CollectionDefinition::id)
                 .toList();
         for (String collectionId : collectionIds) {
             refreshCollection(collectionId, currentGeneration);
         }
+        refreshCategories(currentGeneration);
     }
 
     public void refreshCollection(String collectionId) {
         refreshCollection(collectionId, generation);
+    }
+
+    public void refreshCategoriesForCollections(Collection<String> changedCollectionIds) {
+        if (!enabled || changedCollectionIds == null || changedCollectionIds.isEmpty()) {
+            return;
+        }
+        Set<String> changed = new LinkedHashSet<>();
+        for (String collectionId : changedCollectionIds) {
+            changed.add(normalize(collectionId));
+        }
+        long currentGeneration = generation;
+        for (Map.Entry<String, List<String>> entry : categoryCollections().entrySet()) {
+            boolean affected = false;
+            for (String collectionId : entry.getValue()) {
+                if (changed.contains(collectionId)) {
+                    affected = true;
+                    break;
+                }
+            }
+            if (affected) {
+                refreshCategory(entry.getKey(), entry.getValue(), currentGeneration);
+            }
+        }
     }
 
     private void refreshCollection(String collectionId, long refreshGeneration) {
@@ -121,25 +181,24 @@ public final class LeaderboardService {
         }
         String normalized = normalize(collectionId);
         if (leaderboardLoads.putIfAbsent(normalized, refreshGeneration) != null) {
+            pendingLeaderboardRefreshes.add(normalized);
             return;
         }
-        plugin.repository().loadLeaderboard(normalized, limit).whenComplete((rows, throwable) -> {
+        int requestLimit = limit;
+        plugin.repository().loadLeaderboard(normalized, requestLimit).whenComplete((rows, throwable) -> {
             leaderboardLoads.remove(normalized, refreshGeneration);
+            boolean refreshAgain = pendingLeaderboardRefreshes.remove(normalized);
             if (throwable != null) {
                 plugin.diagnostics().error("leaderboards", "Could not load leaderboard", DiagnosticService.fields(
                         "collection", normalized,
-                        "limit", limit
+                        "limit", requestLimit
                 ), throwable);
-                return;
+            } else if (refreshGeneration == generation && enabled) {
+                store(normalized, rows);
             }
-            if (refreshGeneration != generation || !enabled) {
-                return;
+            if (refreshAgain && refreshGeneration == generation && enabled) {
+                refreshCollection(normalized, refreshGeneration);
             }
-            plugin.scheduler().runGlobal(() -> {
-                if (refreshGeneration == generation && enabled) {
-                    store(normalized, rows);
-                }
-            });
         });
     }
 
@@ -149,13 +208,58 @@ public final class LeaderboardService {
         rankLoads.remove(key);
     }
 
+    private void refreshCategories(long refreshGeneration) {
+        if (!enabled) {
+            return;
+        }
+        for (Map.Entry<String, List<String>> entry : categoryCollections().entrySet()) {
+            refreshCategory(entry.getKey(), entry.getValue(), refreshGeneration);
+        }
+    }
+
+    private void refreshCategory(String categoryId, List<String> collectionIds, long refreshGeneration) {
+        if (!enabled || collectionIds.isEmpty()) {
+            return;
+        }
+        String normalized = normalize(categoryId);
+        if (categoryLeaderboardLoads.putIfAbsent(normalized, refreshGeneration) != null) {
+            pendingCategoryRefreshes.add(normalized);
+            return;
+        }
+        int requestLimit = limit;
+        List<String> requestedCollections = List.copyOf(collectionIds);
+        plugin.repository().loadCategoryLeaderboard(normalized, requestedCollections, requestLimit).whenComplete((rows, throwable) -> {
+            categoryLeaderboardLoads.remove(normalized, refreshGeneration);
+            boolean refreshAgain = pendingCategoryRefreshes.remove(normalized);
+            if (throwable != null) {
+                plugin.diagnostics().error("leaderboards", "Could not load set leaderboard", DiagnosticService.fields(
+                        "set", normalized,
+                        "collections", requestedCollections.size(),
+                        "limit", requestLimit
+                ), throwable);
+            } else if (refreshGeneration == generation && enabled) {
+                storeCategory(normalized, rows);
+            }
+            if (refreshAgain && refreshGeneration == generation && enabled) {
+                refreshCategory(normalized, requestedCollections, refreshGeneration);
+            }
+        });
+    }
+
     private void load() {
         enabled = plugin.getConfig().getBoolean("leaderboards.enabled", true);
         limit = Math.max(1, Math.min(plugin.getConfig().getInt("leaderboards.entries-per-collection", 10), 100));
-        long refreshSeconds = Math.max(15L, plugin.getConfig().getLong("leaderboards.refresh-interval-seconds", 60L));
+        long refreshSeconds = Math.max(15L, Math.min(
+                plugin.getConfig().getLong("leaderboards.refresh-interval-seconds", 60L),
+                Long.MAX_VALUE / 20L
+        ));
         refreshTicks = refreshSeconds * 20L;
-        long rankSeconds = Math.max(5L, plugin.getConfig().getLong("leaderboards.rank-cache-seconds", 30L));
+        long rankSeconds = Math.max(5L, Math.min(
+                plugin.getConfig().getLong("leaderboards.rank-cache-seconds", 30L),
+                Long.MAX_VALUE / 1000L
+        ));
         rankCacheMillis = rankSeconds * 1000L;
+        rankCacheMaxEntries = Math.max(100, plugin.getConfig().getInt("leaderboards.rank-cache-max-entries", 10000));
         emptyName = plugin.getConfig().getString("leaderboards.empty-name", "-");
         emptyValue = plugin.getConfig().getString("leaderboards.empty-value", "0");
         loadingValue = plugin.getConfig().getString("leaderboards.loading-value", "...");
@@ -167,7 +271,8 @@ public final class LeaderboardService {
                 "enabled", enabled,
                 "limit", limit,
                 "refreshSeconds", refreshSeconds,
-                "rankCacheSeconds", rankSeconds
+                "rankCacheSeconds", rankSeconds,
+                "rankCacheMaxEntries", rankCacheMaxEntries
         ));
     }
 
@@ -183,12 +288,25 @@ public final class LeaderboardService {
         ));
     }
 
+    private void storeCategory(String categoryId, List<LeaderboardRow> rows) {
+        List<LeaderboardEntry> entries = new ArrayList<>();
+        for (LeaderboardRow row : rows) {
+            entries.add(new LeaderboardEntry(row.playerId(), resolveName(row), row.progress()));
+        }
+        categoryLeaderboards.put(normalize(categoryId), List.copyOf(entries));
+        plugin.diagnostics().debug("progress", "Set leaderboard refreshed", DiagnosticService.fields(
+                "set", categoryId,
+                "entries", entries.size()
+        ));
+    }
+
     private void requestRank(RankKey key, long requestGeneration) {
-        if (rankLoads.putIfAbsent(key, requestGeneration) != null) {
+        long requestId = rankLoadSequence.updateAndGet(LeaderboardService::incrementVersion);
+        if (rankLoads.putIfAbsent(key, requestId) != null) {
             return;
         }
         plugin.repository().loadPlayerRank(key.playerId(), key.collectionId()).whenComplete((rank, throwable) -> {
-            rankLoads.remove(key, requestGeneration);
+            boolean currentLoad = rankLoads.remove(key, requestId);
             if (throwable != null) {
                 plugin.diagnostics().error("leaderboards", "Could not load player rank", DiagnosticService.fields(
                         "uuid", key.playerId(),
@@ -196,11 +314,41 @@ public final class LeaderboardService {
                 ), throwable);
                 return;
             }
-            if (requestGeneration != generation || !enabled) {
+            if (!currentLoad || requestGeneration != generation || !enabled) {
                 return;
             }
+            makeRankCacheRoom(key, System.currentTimeMillis());
             rankCache.put(key, new RankCacheEntry(rank == null ? 0L : rank, System.currentTimeMillis()));
         });
+    }
+
+    private void pruneRankCache(long now) {
+        rankCache.entrySet().removeIf(entry -> now - entry.getValue().loadedAt() > rankCacheMillis);
+    }
+
+    private void makeRankCacheRoom(RankKey key, long now) {
+        if (rankCache.containsKey(key) || rankCache.size() < rankCacheMaxEntries) {
+            return;
+        }
+        pruneRankCache(now);
+        if (rankCache.size() < rankCacheMaxEntries) {
+            return;
+        }
+        RankKey oldestKey = null;
+        long oldestTime = Long.MAX_VALUE;
+        for (Map.Entry<RankKey, RankCacheEntry> entry : rankCache.entrySet()) {
+            if (entry.getValue().loadedAt() < oldestTime) {
+                oldestKey = entry.getKey();
+                oldestTime = entry.getValue().loadedAt();
+            }
+        }
+        if (oldestKey != null) {
+            rankCache.remove(oldestKey);
+        }
+    }
+
+    private static long incrementVersion(long current) {
+        return current == Long.MAX_VALUE ? 1L : current + 1L;
     }
 
     private String resolveName(LeaderboardRow row) {
@@ -226,5 +374,17 @@ public final class LeaderboardService {
 
     private String normalize(String collectionId) {
         return collectionId == null ? "" : collectionId.toLowerCase(Locale.ROOT).trim();
+    }
+
+    private Map<String, List<String>> categoryCollections() {
+        Map<String, List<String>> categories = new LinkedHashMap<>();
+        for (CollectionDefinition collection : plugin.collectionRegistry().enabledCollections()) {
+            String category = normalize(collection.category());
+            if (category.isBlank()) {
+                continue;
+            }
+            categories.computeIfAbsent(category, ignored -> new ArrayList<>()).add(collection.id());
+        }
+        return categories;
     }
 }

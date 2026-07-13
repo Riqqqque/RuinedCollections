@@ -6,5 +6,6 @@ public enum CollectionSourceType {
     ITEM_PICKUP,
     CRAFT,
     FISH,
+    ARMOR_EQUIP,
     MANUAL
 }
