@@ -179,7 +179,7 @@ sources:
       - '*'
 ```
 
-Use wildcards carefully. A wildcard block, pickup, craft, fish, or armor source checks every matching event for that source type.
+Use wildcards carefully. A wildcard block, pickup, craft, fish, or armor source checks every matching event for that source type. If `*` is mixed with named materials or entities, the wildcard takes precedence.
 
 ## Custom Amounts
 

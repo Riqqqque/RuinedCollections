@@ -40,13 +40,7 @@ public final class CollectionRepository {
     }
 
     public CompletableFuture<PlayerData> loadPlayer(UUID playerId) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return loadPlayerSync(playerId);
-            } catch (SQLException exception) {
-                throw new StorageException(exception);
-            }
-        }, readExecutor);
+        return supplyAfterWrites(() -> loadPlayerSync(playerId));
     }
 
     public PlayerData loadPlayerSync(UUID playerId) throws SQLException {
@@ -475,13 +469,7 @@ public final class CollectionRepository {
     }
 
     public CompletableFuture<SnapshotData> loadSnapshot() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return loadSnapshotSync();
-            } catch (SQLException exception) {
-                throw new StorageException(exception);
-            }
-        }, readExecutor);
+        return supplyAfterWrites(this::loadSnapshotSync);
     }
 
     public SnapshotData loadSnapshotSync() throws SQLException {
@@ -664,6 +652,22 @@ public final class CollectionRepository {
             }
         }
         return false;
+    }
+
+    private <T> CompletableFuture<T> supplyAfterWrites(SqlSupplier<T> supplier) {
+        return CompletableFuture.runAsync(() -> {
+        }, writeExecutor).thenApplyAsync(ignored -> {
+            try {
+                return supplier.get();
+            } catch (SQLException exception) {
+                throw new StorageException(exception);
+            }
+        }, readExecutor);
+    }
+
+    @FunctionalInterface
+    private interface SqlSupplier<T> {
+        T get() throws SQLException;
     }
 
     public static final class StorageException extends RuntimeException {

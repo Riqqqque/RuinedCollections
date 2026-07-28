@@ -62,19 +62,33 @@ public final class RewardService {
                         return;
                     }
                     if (!player.isOnline()) {
-                        restoreClaimForRetry(session, capturedPlayerId, playerName, collection, tier);
+                        scheduleClaimRestore(session, capturedPlayerId, playerName, collection, tier);
                         return;
                     }
                     session.finishClaim(collection.id(), tier.id());
                     execute(player, collection, tier);
                 }, () -> {
                     if (Boolean.TRUE.equals(inserted)) {
-                        restoreClaimForRetry(session, capturedPlayerId, playerName, collection, tier);
+                        scheduleClaimRestore(session, capturedPlayerId, playerName, collection, tier);
                     } else {
                         session.finishClaim(collection.id(), tier.id());
                     }
                 });
             });
+        }
+    }
+
+    private void scheduleClaimRestore(
+            PlayerProgressSession session,
+            UUID playerId,
+            String playerName,
+            CollectionDefinition collection,
+            CollectionTier tier
+    ) {
+        if (plugin.isEnabled()) {
+            plugin.scheduler().runAsync(() -> restoreClaimForRetry(session, playerId, playerName, collection, tier));
+        } else {
+            restoreClaimForRetry(session, playerId, playerName, collection, tier);
         }
     }
 
@@ -92,14 +106,17 @@ public final class RewardService {
                 "collection", collection.id(),
                 "tier", tier.id()
         ));
-        plugin.repository().unclaimTier(playerId, collection.id(), tier.id()).exceptionally(exception -> {
-            plugin.diagnostics().error("rewards", "Could not restore tier claim for offline player", DiagnosticService.fields(
-                    "player", playerName,
-                    "uuid", playerId,
-                    "collection", collection.id(),
-                    "tier", tier.id()
-            ), exception);
-            return null;
+        plugin.repository().unclaimTier(playerId, collection.id(), tier.id()).whenComplete((ignored, exception) -> {
+            if (exception != null) {
+                plugin.diagnostics().error("rewards", "Could not restore tier claim for offline player", DiagnosticService.fields(
+                        "player", playerName,
+                        "uuid", playerId,
+                        "collection", collection.id(),
+                        "tier", tier.id()
+                ), exception);
+                return;
+            }
+            plugin.progressService().refreshOnlinePlayer(playerId);
         });
     }
 
@@ -118,20 +135,40 @@ public final class RewardService {
         }
 
         for (RewardAction reward : tier.rewards()) {
-            switch (reward.type()) {
-                case MESSAGE -> player.sendMessage(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
-                case BROADCAST -> plugin.scheduler().broadcast(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
-                case COMMAND -> runCommand(player, reward, placeholders);
-                case ECONOMY -> {
-                    if (reward.amount() > 0 && !plugin.hooks().economy().deposit(player, reward.amount())) {
-                        plugin.diagnostics().warn("rewards", "Economy reward failed", DiagnosticService.fields(
-                                "player", player.getName(),
-                                "uuid", player.getUniqueId(),
-                                "collection", collection.id(),
-                                "tier", tier.id(),
-                                "amount", reward.amount()
-                        ));
-                    }
+            try {
+                executeAction(player, collection, tier, reward, placeholders);
+            } catch (RuntimeException exception) {
+                plugin.diagnostics().error("rewards", "Reward action failed after the tier was claimed", DiagnosticService.fields(
+                        "player", player.getName(),
+                        "uuid", player.getUniqueId(),
+                        "collection", collection.id(),
+                        "tier", tier.id(),
+                        "type", reward.type()
+                ), exception);
+            }
+        }
+    }
+
+    private void executeAction(
+            Player player,
+            CollectionDefinition collection,
+            CollectionTier tier,
+            RewardAction reward,
+            Map<String, String> placeholders
+    ) {
+        switch (reward.type()) {
+            case MESSAGE -> player.sendMessage(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
+            case BROADCAST -> plugin.scheduler().broadcast(Text.component(plugin.hooks().placeholders(player, Text.placeholders(reward.text(), placeholders))));
+            case COMMAND -> runCommand(player, reward, placeholders);
+            case ECONOMY -> {
+                if (reward.amount() > 0 && !plugin.hooks().economy().deposit(player, reward.amount())) {
+                    plugin.diagnostics().warn("rewards", "Economy reward failed", DiagnosticService.fields(
+                            "player", player.getName(),
+                            "uuid", player.getUniqueId(),
+                            "collection", collection.id(),
+                            "tier", tier.id(),
+                            "amount", reward.amount()
+                    ));
                 }
             }
         }
@@ -150,27 +187,27 @@ public final class RewardService {
             ));
             return;
         }
-        boolean dispatched;
         if ("PLAYER".equalsIgnoreCase(reward.sender())) {
-            dispatched = dispatch(player, command);
+            dispatchLogged(player, command, player, reward);
         } else {
             String finalCommand = command;
-            plugin.scheduler().runGlobal(() -> dispatch(Bukkit.getConsoleSender(), finalCommand, player, reward));
-            return;
-        }
-        if (!dispatched) {
-            logUnhandled(player, reward, command);
+            plugin.scheduler().runGlobal(() -> dispatchLogged(Bukkit.getConsoleSender(), finalCommand, player, reward));
         }
     }
 
-    private void dispatch(CommandSender sender, String command, Player player, RewardAction reward) {
-        if (!dispatch(sender, command)) {
-            logUnhandled(player, reward, command);
+    private void dispatchLogged(CommandSender sender, String command, Player player, RewardAction reward) {
+        try {
+            if (!Bukkit.dispatchCommand(sender, command)) {
+                logUnhandled(player, reward, command);
+            }
+        } catch (RuntimeException exception) {
+            plugin.diagnostics().error("rewards", "Reward command threw an exception", DiagnosticService.fields(
+                    "player", player.getName(),
+                    "uuid", player.getUniqueId(),
+                    "sender", reward.sender(),
+                    "commandLabel", commandLabel(command)
+            ), exception);
         }
-    }
-
-    private boolean dispatch(CommandSender sender, String command) {
-        return Bukkit.dispatchCommand(sender, command);
     }
 
     private void logUnhandled(Player player, RewardAction reward, String command) {

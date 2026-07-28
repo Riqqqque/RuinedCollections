@@ -1,8 +1,9 @@
 import org.gradle.api.attributes.java.TargetJvmVersion
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 plugins {
     java
-    id("com.gradleup.shadow") version "9.4.2"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 group = "com.rique"
@@ -38,6 +39,11 @@ configurations.named("compileClasspath") {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(21)
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 tasks.test {

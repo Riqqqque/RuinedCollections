@@ -54,8 +54,11 @@ public final class DiagnosticService {
             debugProgress = config.getBoolean("diagnostics.debug.progress", false);
             debugRewards = config.getBoolean("diagnostics.debug.rewards", false);
             debugCommands = config.getBoolean("diagnostics.debug.commands", false);
-            maxBytes = Math.max(1L, config.getLong("diagnostics.max-file-size-mb", 8L)) * BYTES_PER_MB;
-            maxArchives = Math.max(0, config.getInt("diagnostics.max-archives", 5));
+            long configuredMegabytes = Math.max(1L, config.getLong("diagnostics.max-file-size-mb", 8L));
+            maxBytes = configuredMegabytes > Long.MAX_VALUE / BYTES_PER_MB
+                    ? Long.MAX_VALUE
+                    : configuredMegabytes * BYTES_PER_MB;
+            maxArchives = Math.max(0, Math.min(config.getInt("diagnostics.max-archives", 5), 100));
             logFile = resolveFile(config.getString("diagnostics.file", "logs/diagnostics.log"));
             if (!enabled) {
                 return;

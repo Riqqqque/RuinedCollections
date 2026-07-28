@@ -138,7 +138,7 @@ Example:
 /rc create oak_log OAK_LOG &6Oak Log
 ```
 
-This creates a new collection file with starter tiers and a block break source.
+This creates a new collection file with starter tiers. Block materials use a block-break source; non-block materials use an item-pickup source.
 
 Collection ids must be 1-64 lowercase letters, numbers, underscores, or hyphens.
 

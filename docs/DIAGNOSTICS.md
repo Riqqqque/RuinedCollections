@@ -20,6 +20,7 @@ Always logged:
 - reward claim failures
 - economy reward failures
 - reward commands that were empty or not handled
+- exceptions thrown by individual reward actions or commands
 - missing import files
 - placed-block cache failures
 - hooked optional plugins
@@ -52,7 +53,7 @@ diagnostics:
 
 `mirror-warnings-to-console` keeps important warnings in the normal server console while still writing the full context to the diagnostics file.
 
-`max-file-size-mb` and `max-archives` rotate the diagnostics file so it does not grow forever. With the defaults, the plugin keeps `diagnostics.log` plus up to five archives.
+`max-file-size-mb` and `max-archives` rotate the diagnostics file so it does not grow forever. With the defaults, the plugin keeps `diagnostics.log` plus up to five archives. Archive count is bounded to 100 even if the config contains an accidental extreme value.
 
 ## Commands
 

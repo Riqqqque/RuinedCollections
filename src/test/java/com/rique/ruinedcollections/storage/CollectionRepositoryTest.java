@@ -95,4 +95,16 @@ final class CollectionRepositoryTest {
         repository.applyPlacedBlockBatch(Map.of(), Set.of(first)).join();
         assertEquals(Set.of(second), repository.loadPlacedBlocks().join());
     }
+
+    @Test
+    void playerReadsWaitForWritesThatWereAlreadyQueued() {
+        UUID playerId = UUID.randomUUID();
+        for (long amount = 1; amount <= 100; amount++) {
+            repository.setProgress(playerId, "oak_log", amount);
+        }
+
+        PlayerData data = repository.loadPlayer(playerId).join();
+
+        assertEquals(100L, data.progress().get("oak_log"));
+    }
 }

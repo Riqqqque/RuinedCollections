@@ -148,6 +148,12 @@ public final class ProgressService {
         load(player);
     }
 
+    public void refreshOnlinePlayer(UUID playerId) {
+        if (playerId != null) {
+            refreshOnlinePlayers(Set.of(playerId));
+        }
+    }
+
     public void addProgress(Player player, CollectionDefinition collection, long amount) {
         addProgress(player, collection, amount, true);
     }

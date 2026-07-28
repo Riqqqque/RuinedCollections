@@ -130,7 +130,7 @@ Future releases are tag-driven. The GitHub workflow builds the jar, checks the s
 From a clean working tree:
 
 ```powershell
-.\scripts\release.ps1 1.0.15
+.\scripts\release.ps1 1.0.19
 ```
 
 Required GitHub Actions secrets:

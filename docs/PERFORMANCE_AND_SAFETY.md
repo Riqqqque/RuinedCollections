@@ -23,6 +23,8 @@ Progress earned while a player is still loading is queued and saved safely if th
 
 Exports and imports force a synchronous flush of pending and load-waiting progress first. Imports also pause progress loads for affected players until the snapshot apply finishes, then refresh online sessions.
 
+Player and export reads wait for storage writes that were already queued before the read. This prevents a fast reconnect or offline admin edit from loading an older value while keeping normal leaderboard reads parallel.
+
 Craft tracking checks the final server inventory state on the next tick. Shift-click crafting only counts the items that actually reached the player's inventory or cursor.
 
 Armor equip tracking uses Paper's armor change event, so cancelled inventory clicks and invalid client packets do not award progress.
@@ -60,6 +62,8 @@ tracking:
 ```
 
 Protection is immediate in memory. Database changes are grouped into ordered transactions and flushed during graceful shutdown, so busy building servers do not create one SQL transaction per block event.
+
+Placed-block records move with piston-moved and falling gravity blocks, and are removed when tracked blocks are destroyed by explosions, burning, fading, or leaf decay. Multi-block placement events record every placed block.
 
 ## World Filters
 

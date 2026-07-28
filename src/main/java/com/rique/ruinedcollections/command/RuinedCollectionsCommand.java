@@ -437,33 +437,45 @@ public final class RuinedCollectionsCommand implements CommandExecutor, TabCompl
             sender.sendMessage(color("&cImport stopped because pending progress could not be saved. Check diagnostics."));
             return;
         }
-        plugin.snapshots().apply(preview).whenComplete((ignored, throwable) -> {
-            boolean finishedCleanly;
-            try {
-                finishedCleanly = plugin.progressService().finishSnapshotApply(playerIds);
-            } finally {
-                plugin.snapshots().finishImport();
+        plugin.snapshots().apply(preview).whenComplete((ignored, throwable) ->
+                plugin.scheduler().runAsync(() -> finishImport(sender, file, preview, playerIds, throwable)));
+    }
+
+    private void finishImport(CommandSender sender, File file, ImportPreview preview, Set<UUID> playerIds, Throwable applyError) {
+        boolean finishedCleanly = false;
+        Throwable completionError = applyError;
+        try {
+            finishedCleanly = plugin.progressService().finishSnapshotApply(playerIds);
+        } catch (RuntimeException exception) {
+            if (completionError == null) {
+                completionError = exception;
+            } else {
+                completionError.addSuppressed(exception);
             }
-            if (throwable == null) {
-                plugin.leaderboards().refreshAll();
+        } finally {
+            plugin.snapshots().finishImport();
+        }
+        if (completionError == null) {
+            plugin.leaderboards().refreshAll();
+        }
+        boolean finalFinishedCleanly = finishedCleanly;
+        Throwable finalError = completionError;
+        plugin.scheduler().runSender(sender, () -> {
+            if (finalError != null) {
+                plugin.diagnostics().error("import", "Import failed", DiagnosticService.fields(
+                        "sender", sender.getName(),
+                        "file", file.getAbsolutePath(),
+                        "progressRows", preview.progressRows().size(),
+                        "claimedRows", preview.claimedRows().size(),
+                        "playerNames", preview.playerNames().size()
+                ), finalError);
+                sender.sendMessage(color("&cImport failed: " + finalError.getMessage()));
+                return;
             }
-            plugin.scheduler().runSender(sender, () -> {
-                if (throwable != null) {
-                    plugin.diagnostics().error("import", "Import failed", DiagnosticService.fields(
-                            "sender", sender.getName(),
-                            "file", file.getAbsolutePath(),
-                            "progressRows", preview.progressRows().size(),
-                            "claimedRows", preview.claimedRows().size(),
-                            "playerNames", preview.playerNames().size()
-                    ), throwable);
-                    sender.sendMessage(color("&cImport failed: " + throwable.getMessage()));
-                    return;
-                }
-                if (!finishedCleanly) {
-                    sender.sendMessage(color("&eImport applied, but some progress earned during the import is still queued. Check diagnostics."));
-                }
-                sender.sendMessage(color("&aImported data."));
-            });
+            if (!finalFinishedCleanly) {
+                sender.sendMessage(color("&eImport applied, but some progress earned during the import is still queued. Check diagnostics."));
+            }
+            sender.sendMessage(color("&aImported data."));
         });
     }
 

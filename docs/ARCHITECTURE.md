@@ -44,6 +44,8 @@ flowchart TD
 5. The async flush writes batched progress to SQL.
 6. Shutdown flushes pending progress before the plugin disables.
 
+Player-session and export reads wait for writes that were queued first. Leaderboard reads stay on the parallel read pool and use their normal refresh cache.
+
 ## Reward Flow
 
 1. Progress reaches a tier goal.

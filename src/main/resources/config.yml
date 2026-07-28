@@ -1,6 +1,7 @@
 storage:
   # sqlite is best for small servers. mysql is better for large servers and networks.
   type: sqlite
+  # Use 1-32 lowercase letters, numbers, or underscores.
   table-prefix: rc_
   sqlite:
     file: data.db

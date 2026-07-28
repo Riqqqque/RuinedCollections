@@ -14,6 +14,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -34,6 +35,7 @@ public final class CollectionRegistry {
     private static final String ID_PATTERN = "[a-z0-9_-]+";
     private static final String TIER_ID_PATTERN = "[A-Za-z0-9_-]+";
     private static final int MAX_ID_LENGTH = 64;
+    private static final Set<String> PERSISTENT_DATA_TYPES = Set.of("STRING", "INTEGER", "INT", "LONG", "DOUBLE");
 
     private final RuinedCollectionsPlugin plugin;
     private final File collectionsFolder;
@@ -263,7 +265,7 @@ public final class CollectionRegistry {
             config.set("display-item.material", material.name());
             config.set("menu-slot", -1);
             Map<String, Object> source = new LinkedHashMap<>();
-            source.put("type", "BLOCK_BREAK");
+            source.put("type", material.isBlock() ? "BLOCK_BREAK" : "ITEM_PICKUP");
             source.put("materials", List.of(material.name()));
             config.set("sources", List.of(source));
             config.set("tiers", List.of(tierMap("I", 50), tierMap("II", 100), tierMap("III", 500)));
@@ -287,9 +289,7 @@ public final class CollectionRegistry {
                 throw new IOException("Could not create deleted folder.");
             }
             File target = new File(deletedFolder, file.getName() + "." + System.currentTimeMillis() + ".bak");
-            if (!file.renameTo(target)) {
-                throw new IOException("Could not move collection to " + target.getName());
-            }
+            Files.move(file.toPath(), target.toPath());
             return true;
         } finally {
             lock.writeLock().unlock();
@@ -537,6 +537,9 @@ public final class CollectionRegistry {
             }
             material(value, file, issues).ifPresent(materials::add);
         }
+        if (anyMaterial) {
+            materials.clear();
+        }
 
         List<String> entityValues = stringList(map.get("entities"));
         boolean anyEntity = containsWildcard(entityValues);
@@ -550,6 +553,9 @@ public final class CollectionRegistry {
             } catch (IllegalArgumentException exception) {
                 issues.add(file.getName() + ": invalid entity type '" + value + "'.");
             }
+        }
+        if (anyEntity) {
+            entities.clear();
         }
 
         if (type == CollectionSourceType.ENTITY_KILL) {
@@ -602,14 +608,39 @@ public final class CollectionRegistry {
                     issues.add(file.getName() + ": invalid persistent-data key '" + keyText + "'.");
                     continue;
                 }
-                rules.add(new PersistentDataRule(
-                        key,
-                        string(ruleMap, "type", "STRING"),
-                        string(ruleMap, "value", "")
-                ));
+                String type = string(ruleMap, "type", "STRING").toUpperCase(Locale.ROOT);
+                if (!PERSISTENT_DATA_TYPES.contains(type)) {
+                    issues.add(file.getName() + ": invalid persistent-data type '" + type + "'.");
+                    continue;
+                }
+                String value = string(ruleMap, "value", "");
+                if (!isValidPersistentDataValue(type, value)) {
+                    issues.add(file.getName() + ": invalid " + type + " persistent-data value '" + value + "'.");
+                    continue;
+                }
+                rules.add(new PersistentDataRule(key, type, value));
             }
         }
         return new ItemMatcher(customModelData, displayName, rules);
+    }
+
+    private boolean isValidPersistentDataValue(String type, String value) {
+        try {
+            return switch (type) {
+                case "INTEGER", "INT" -> {
+                    Integer.parseInt(value);
+                    yield true;
+                }
+                case "LONG" -> {
+                    Long.parseLong(value);
+                    yield true;
+                }
+                case "DOUBLE" -> Double.isFinite(Double.parseDouble(value));
+                default -> true;
+            };
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     private List<RewardAction> parseRewards(Map<?, ?> tierMap, File file, List<String> issues) {

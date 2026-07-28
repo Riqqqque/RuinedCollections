@@ -2,11 +2,14 @@ package com.rique.ruinedcollections.storage;
 
 import com.rique.ruinedcollections.RuinedCollectionsPlugin;
 import com.rique.ruinedcollections.diagnostics.DiagnosticService;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,11 +64,14 @@ public final class PlacedBlockService {
     }
 
     public void mark(Block block) {
+        mark(block, block.getType());
+    }
+
+    public void mark(Block block, Material material) {
         BlockLocationKey key = BlockLocationKey.from(block.getLocation());
-        String material = block.getType().name();
         placedBlocks.add(key);
         synchronized (pendingOperations) {
-            pendingOperations.put(key, PendingOperation.upsert(material));
+            pendingOperations.put(key, PendingOperation.upsert(material.name()));
         }
     }
 
@@ -78,6 +84,32 @@ public final class PlacedBlockService {
             pendingOperations.put(key, PendingOperation.deletion());
         }
         return true;
+    }
+
+    public void moveBlocks(List<Block> blocks, BlockFace direction) {
+        if (blocks.isEmpty()) {
+            return;
+        }
+        Set<BlockLocationKey> sources = new HashSet<>();
+        Map<BlockLocationKey, String> destinations = new HashMap<>();
+        for (Block block : blocks) {
+            BlockLocationKey source = BlockLocationKey.from(block.getLocation());
+            if (!placedBlocks.contains(source)) {
+                continue;
+            }
+            sources.add(source);
+            Block destination = block.getRelative(direction);
+            destinations.put(BlockLocationKey.from(destination.getLocation()), block.getType().name());
+        }
+        if (sources.isEmpty()) {
+            return;
+        }
+        placedBlocks.removeAll(sources);
+        placedBlocks.addAll(destinations.keySet());
+        synchronized (pendingOperations) {
+            sources.forEach(key -> pendingOperations.put(key, PendingOperation.deletion()));
+            destinations.forEach((key, material) -> pendingOperations.put(key, PendingOperation.upsert(material)));
+        }
     }
 
     private void scheduleFlush() {

@@ -53,6 +53,8 @@ LONG
 DOUBLE
 ```
 
+Unknown types and malformed numeric values are rejected during `/rc validate`. Numeric values are parsed as their declared type, so invalid rules never reach item event matching.
+
 ## Custom Armor
 
 Custom armor works the same way as other custom items. Use the actual Bukkit material the item uses, then add the custom model data, display name, or persistent data check that identifies the item.

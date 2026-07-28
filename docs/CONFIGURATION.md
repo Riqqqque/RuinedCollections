@@ -40,7 +40,7 @@ storage:
     pool-size: 10
 ```
 
-Use a unique `table-prefix` if multiple plugins or test servers share one database. Prefixes may use lowercase letters, numbers, and underscores.
+Use a unique `table-prefix` if multiple plugins or test servers share one database. Prefixes must use 1-32 lowercase letters, numbers, or underscores. Invalid `storage.type` or `table-prefix` values stop startup with a clear storage error instead of silently using another database or prefix.
 
 ## Progress Saving
 
@@ -148,7 +148,7 @@ tracking:
   enabled-worlds: []
 ```
 
-`ignore-player-placed-blocks` protects block collections from place-and-break farming. It tracks placed blocks in storage so restarts do not clear the protection. Changes are immediate in memory and grouped into SQL transactions using `placed-block-flush-interval-seconds`.
+`ignore-player-placed-blocks` protects block collections from place-and-break farming. It tracks placed blocks in storage so restarts do not clear the protection. Changes are immediate in memory and grouped into SQL transactions using `placed-block-flush-interval-seconds`. Records move with piston-moved blocks and are cleared for explosions, burning, fading, and leaf decay.
 
 Use `enabled-worlds` to allow tracking only in specific worlds. Use `disabled-worlds` to block specific worlds.
 

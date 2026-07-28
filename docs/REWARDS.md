@@ -4,6 +4,8 @@ Rewards run when a player reaches a tier goal. Each reward is only paid once per
 
 RuinedCollections stores the claim before running economy or command rewards. This prevents duplicate payouts when events repeat or a player reconnects. A forced process crash in the narrow gap between those two steps can leave the tier claimed before an external reward finishes; external commands and economy transactions cannot share the plugin's SQL transaction. Check diagnostics after an unclean shutdown and manually run the missing reward when necessary.
 
+If a player disconnects before reward execution starts, the claim is rolled back asynchronously and any fast reconnect is refreshed after that rollback. Exceptions from individual reward actions are captured in diagnostics without preventing later actions in the same tier from being attempted.
+
 Reward placeholders:
 
 ```text
@@ -67,7 +69,7 @@ rewards:
     amount: 250.0
 ```
 
-If Vault is missing or no economy provider is registered, the reward is skipped and a warning is logged.
+If Vault is missing or no economy provider is registered, the reward is skipped and a warning is logged. The tier stays claimed to prevent other actions in the same tier from being duplicated, so test economy rewards before using them in production.
 
 ## LuckPerms Rewards
 

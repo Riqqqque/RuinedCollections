@@ -25,9 +25,11 @@ storage:
   table-prefix: rc_
 ```
 
-Prefixes may use lowercase letters, numbers, and underscores. Existing valid prefixes are preserved; migration index names are shortened separately when needed so long prefixes do not rename data tables.
+Prefixes must use 1-32 lowercase letters, numbers, or underscores. Invalid storage types and prefixes stop startup with a clear storage error instead of silently selecting a different database or table prefix.
 
 The plugin creates leaderboard and rank indexes for `player_progress` during startup. SQLite also uses WAL mode and a busy timeout to reduce lock errors under normal server load.
+
+Startup also refuses a schema version newer than the plugin understands. This prevents an older jar from writing to a database that has already been migrated by a newer release.
 
 ## Player Progress
 

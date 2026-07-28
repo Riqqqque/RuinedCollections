@@ -15,6 +15,8 @@ import java.util.Locale;
 
 public final class DatabaseManager {
     private static final int MAX_INDEX_NAME_LENGTH = 60;
+    private static final int MAX_TABLE_PREFIX_LENGTH = 32;
+    private static final int CURRENT_SCHEMA_VERSION = 2;
 
     private HikariDataSource dataSource;
     private StorageType storageType;
@@ -22,7 +24,12 @@ public final class DatabaseManager {
 
     public void start(JavaPlugin plugin) throws SQLException {
         FileConfiguration config = plugin.getConfig();
-        storageType = "mysql".equalsIgnoreCase(config.getString("storage.type", "sqlite")) ? StorageType.MYSQL : StorageType.SQLITE;
+        String configuredType = config.getString("storage.type", "sqlite");
+        storageType = switch (configuredType == null ? "" : configuredType.toLowerCase(Locale.ROOT).trim()) {
+            case "sqlite" -> StorageType.SQLITE;
+            case "mysql" -> StorageType.MYSQL;
+            default -> throw new SQLException("storage.type must be either sqlite or mysql");
+        };
         tablePrefix = sanitizePrefix(config.getString("storage.table-prefix", "rc_"));
 
         HikariConfig hikari = new HikariConfig();
@@ -111,6 +118,10 @@ public final class DatabaseManager {
                 statement.executeUpdate("INSERT INTO " + tablePrefix + "schema (version) VALUES (1)");
                 schemaVersion = 1;
             }
+            if (schemaVersion > CURRENT_SCHEMA_VERSION) {
+                throw new SQLException("Storage schema version " + schemaVersion
+                        + " is newer than this plugin supports (" + CURRENT_SCHEMA_VERSION + ")");
+            }
             statement.execute("CREATE TABLE IF NOT EXISTS " + tablePrefix + "player_names ("
                     + "player_uuid VARCHAR(36) NOT NULL,"
                     + "player_name VARCHAR(64) NOT NULL,"
@@ -163,10 +174,11 @@ public final class DatabaseManager {
         }
     }
 
-    private String sanitizePrefix(String prefix) {
+    private String sanitizePrefix(String prefix) throws SQLException {
         String value = prefix == null ? "rc_" : prefix.toLowerCase(Locale.ROOT);
-        if (!value.matches("[a-z0-9_]+")) {
-            return "rc_";
+        if (!value.matches("[a-z0-9_]+") || value.length() > MAX_TABLE_PREFIX_LENGTH) {
+            throw new SQLException("storage.table-prefix must use 1-" + MAX_TABLE_PREFIX_LENGTH
+                    + " lowercase letters, numbers, or underscores");
         }
         return value;
     }
