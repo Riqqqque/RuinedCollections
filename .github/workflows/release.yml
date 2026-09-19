@@ -236,3 +236,47 @@ jobs:
             -H "User-Agent: Riqqqque/RuinedCollections" \
             -F "data=@modrinth-version.json;type=application/json" \
             -F "file=@${{ steps.jar.outputs.path }};filename=RuinedCollections.jar;type=application/java-archive"
+
+      - name: Publish CurseForge version
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CURSEFORGE_PROJECT_ID:-}" ]]; then
+            echo "::notice::CURSEFORGE_PROJECT_ID variable is not set; skipping CurseForge publish."
+            exit 0
+          fi
+          if [[ -z "${CURSEFORGE_API_KEY:-}" ]]; then
+            echo "::error::CURSEFORGE_PROJECT_ID is set but CURSEFORGE_API_KEY secret is missing."
+            exit 1
+          fi
+
+          version="${{ steps.meta.outputs.version }}"
+
+          ids="$(curl -fsS -H "X-Api-Token: $CURSEFORGE_API_KEY" \
+            "https://minecraft.curseforge.com/api/game/versions" \
+            | jq -c --argjson wanted "$GAME_VERSIONS_JSON" \
+              '[.[] | select(.gameVersionTypeID == 1) | select(.name as $n | $wanted | index($n)) | .id]')"
+          if [[ "$ids" == "[]" ]]; then
+            echo "::error::Could not resolve any CurseForge game version IDs."
+            exit 1
+          fi
+
+          jq -n \
+            --arg changelog "$(cat release-notes.md)" \
+            --arg displayName "RuinedCollections $version" \
+            --argjson gameVersions "$ids" \
+            '{
+              changelog: $changelog,
+              changelogType: "markdown",
+              displayName: $displayName,
+              gameVersions: $gameVersions,
+              releaseType: "release"
+            }' > curseforge-metadata.json
+
+          curl -fsS -X POST "https://minecraft.curseforge.com/api/projects/${CURSEFORGE_PROJECT_ID}/upload-file" \
+            -H "X-Api-Token: $CURSEFORGE_API_KEY" \
+            -F "metadata=<curseforge-metadata.json" \
+            -F "file=@${{ steps.jar.outputs.path }};filename=RuinedCollections.jar;type=application/java-archive"
